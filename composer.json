@@ -1,0 +1,19 @@
+{
+    "name": "edge-payments/edge-woocommerce",
+    "description": "Edge Payments WooCommerce Plugin",
+    "type": "plugin",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/Edge-Payment-Technologies/edge-php-sdk"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "EdgePayments\\EdgeWoocommerce\\": "src/"
+        }
+    },
+    "require": {
+        "edge-payment-technologies/edge-php-sdk": "dev-main"
+    }
+}
