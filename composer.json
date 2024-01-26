@@ -1,5 +1,5 @@
 {
-    "name": "edge-payments/edge-woocommerce",
+    "name": "edge-payment-technologies/edge-woocommerce",
     "description": "Edge Payments WooCommerce Plugin",
     "type": "plugin",
     "repositories": [
