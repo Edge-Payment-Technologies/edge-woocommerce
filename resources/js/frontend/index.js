@@ -1,7 +1,6 @@
 
-import { sprintf, __ } from '@wordpress/i18n';
+import { __ } from '@wordpress/i18n';
 import { registerPaymentMethod } from '@woocommerce/blocks-registry';
-import { usePaymentEventsContext } from '@woocommerce/blocks-checkout';
 import { decodeEntities } from '@wordpress/html-entities';
 import { getSetting } from '@woocommerce/settings';
 import { useEffect } from '@wordpress/element';
