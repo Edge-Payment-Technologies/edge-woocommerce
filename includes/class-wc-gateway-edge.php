@@ -1,6 +1,6 @@
 <?php
 
-require_once(plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php');
+require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php');
 
 
 /**
@@ -29,21 +29,21 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 	public function __construct()
 	{
 
-		$this->id                 = 'edge';
-		$this->icon               = apply_filters('woocommerce_edge_gateway_icon', '');
-		$this->has_fields         = true;
-		$this->supports           = array(
+		$this->id = 'edge';
+		$this->icon = apply_filters('woocommerce_edge_gateway_icon', '');
+		$this->has_fields = true;
+		$this->supports = array(
 			'products',
-			/*'subscriptions',
-			'subscription_cancellation',
-			'subscription_suspension',
-			'subscription_reactivation',
-			'subscription_amount_changes',
-			'subscription_date_changes',
-			'multiple_subscriptions'*/
+			/*'payment_subscriptions',
+										 'subscription_cancellation',
+										 'subscription_suspension',
+										 'subscription_reactivation',
+										 'subscription_amount_changes',
+										 'subscription_date_changes',
+										 'multiple_subscriptions'*/
 		);
 
-		$this->method_title       = _x('Edge Payments', 'Edge payments method', 'edge-gateway');
+		$this->method_title = _x('Edge Payments', 'Edge payments method', 'edge-gateway');
 		$this->method_description = __('Allows edge payments.', 'edge-gateway');
 
 		// Load the settings.
@@ -54,7 +54,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		$this->title = $this->get_option('title');
 		$this->description = $this->get_option('description');
 		$this->enabled = $this->get_option('enabled');
-		$this->testmode =  'yes' === $this->get_option('testmode');
+		$this->testmode = 'yes' === $this->get_option('testmode');
 		$this->private_key = $this->testmode ? $this->get_option('test_private_key') : $this->get_option('private_key');
 		$this->publishable_key = $this->testmode ? $this->get_option('test_publishable_key') : $this->get_option('publishable_key');
 
@@ -142,7 +142,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			//Check if a customer with this email already exists
 			$getCustomer = \Edge\Client::get('customers', [
 				'filter' =>
-				['email' =>  $order->get_billing_email()]
+					['email' => $order->get_billing_email()]
 			]);
 		} catch (Exception $e) {
 			throw new Exception(self::getEdgeErrorMessage($e));
@@ -196,7 +196,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			'city' => $order->get_shipping_city(),
 			'state' => $order->get_shipping_state(),
 			'zip' => $order->get_shipping_postcode(),
-			'country' =>  \Edge\Helpers::convertAlpha2ToAlpha3($order->get_shipping_country()),
+			'country' => \Edge\Helpers::convertAlpha2ToAlpha3($order->get_shipping_country()),
 		];
 
 		try {
@@ -239,16 +239,16 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			'payment_methods',
 			[
 				'data' =>
-				[
-					'attributes' => $edgePaymentMethod,
-					'relationships' => $relationships
-				]
+					[
+						'attributes' => $edgePaymentMethod,
+						'relationships' => $relationships
+					]
 			]
 		);
 
 		$paymentMethodId = $linkPaymentMethod->data->id;
 
-		//Subscription logic here
+		//PaymentSubscriptions logic here
 		$edgeCreateCharge = [
 			'amount_cents' => (float) $order->get_total() * 100,
 			'captured' => true,
@@ -281,13 +281,13 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		try {
 			//Link payment card
 			$chargeCustomer = Edge\Client::create(
-				'charges',
+				'payment_demands',
 				[
 					'data' =>
-					[
-						'attributes' => $edgeCreateCharge,
-						'relationships' => $relationships
-					]
+						[
+							'attributes' => $edgeCreateCharge,
+							'relationships' => $relationships
+						]
 				]
 			);
 		} catch (Exception $e) {
@@ -296,11 +296,11 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 		$edgeChargeId = $chargeCustomer->data->id;
 
-		//Call get Charge endpoint to check status, do it 3 more times if its still pending
+		//Call get PaymentDemand endpoint to check status, do it 3 more times if its still pending
 		$payment_result = "pending";
 
 		for ($i = 0; $i < 5; $i++) {
-			$response = Edge\Client::get('charges/' . $edgeChargeId);
+			$response = Edge\Client::get('payment_demands/' . $edgeChargeId);
 			if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
 				$payment_result = $response->data->attributes->processor_state;
 				break;
@@ -320,8 +320,8 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 			// Return thankyou redirect
 			return array(
-				'result' 	=> 'success',
-				'redirect'	=> $this->get_return_url($order)
+				'result' => 'success',
+				'redirect' => $this->get_return_url($order)
 			);
 		} else {
 			$message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway');

@@ -30,8 +30,8 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType
 	public function initialize()
 	{
 		$this->settings = get_option('woocommerce_edge_settings', []);
-		$gateways       = WC()->payment_gateways->payment_gateways();
-		$this->gateway  = $gateways[$this->name];
+		$gateways = WC()->payment_gateways->payment_gateways();
+		$this->gateway = $gateways[$this->name];
 	}
 
 	/**
@@ -51,15 +51,15 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType
 	 */
 	public function get_payment_method_script_handles()
 	{
-		$script_path       = '/assets/js/frontend/blocks.js';
+		$script_path = '/assets/js/frontend/blocks.js';
 		$script_asset_path = WC_Edge_Payments::plugin_abspath() . 'assets/js/frontend/blocks.asset.php';
-		$script_asset      = file_exists($script_asset_path)
-			? require($script_asset_path)
+		$script_asset = file_exists($script_asset_path)
+			? require ($script_asset_path)
 			: array(
 				'dependencies' => array(),
-				'version'      => '1.2.0'
+				'version' => '1.2.0'
 			);
-		$script_url        = WC_Edge_Payments::plugin_url() . $script_path;
+		$script_url = WC_Edge_Payments::plugin_url() . $script_path;
 
 		wp_register_script(
 			'wc-edge-payments-blocks',
@@ -95,11 +95,11 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType
 		}
 
 		return [
-			'title'       => $this->get_setting('title'),
+			'title' => $this->get_setting('title'),
 			'description' => $description,
-			'testmode'       => $this->get_setting('testmode'),
+			'testmode' => $this->get_setting('testmode'),
 			'publishable_key' => ($this->get_setting('testmode') != "no") ? $this->get_setting('test_publishable_key') : $this->get_setting('publishable_key'),
-			'supports'    => array_filter($this->gateway->supports, [$this->gateway, 'supports'])
+			'supports' => array_filter($this->gateway->supports, [$this->gateway, 'supports'])
 		];
 	}
 }
