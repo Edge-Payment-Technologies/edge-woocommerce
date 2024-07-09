@@ -35,12 +35,12 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		$this->supports = array(
 			'products',
 			/*'payment_subscriptions',
-										 'subscription_cancellation',
-										 'subscription_suspension',
-										 'subscription_reactivation',
-										 'subscription_amount_changes',
-										 'subscription_date_changes',
-										 'multiple_subscriptions'*/
+												'subscription_cancellation',
+												'subscription_suspension',
+												'subscription_reactivation',
+												'subscription_amount_changes',
+												'subscription_date_changes',
+												'multiple_subscriptions'*/
 		);
 
 		$this->method_title = _x('Edge Payments', 'Edge payments method', 'edge-gateway');
@@ -249,7 +249,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		$paymentMethodId = $linkPaymentMethod->data->id;
 
 		//PaymentSubscriptions logic here
-		$edgeCreateCharge = [
+		$edgeCreatePaymentDemand = [
 			'amount_cents' => (float) $order->get_total() * 100,
 			'captured' => true,
 			'currency' => $order->get_currency(),
@@ -285,7 +285,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 				[
 					'data' =>
 						[
-							'attributes' => $edgeCreateCharge,
+							'attributes' => $edgeCreatePaymentDemand,
 							'relationships' => $relationships
 						]
 				]
@@ -294,13 +294,13 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			throw new Exception(self::getEdgeErrorMessage($e));
 		}
 
-		$edgeChargeId = $chargeCustomer->data->id;
+		$edgePaymentDemandId = $chargeCustomer->data->id;
 
 		//Call get PaymentDemand endpoint to check status, do it 3 more times if its still pending
 		$payment_result = "pending";
 
 		for ($i = 0; $i < 5; $i++) {
-			$response = Edge\Client::get('payment_demands/' . $edgeChargeId);
+			$response = Edge\Client::get('payment_demands/' . $edgePaymentDemandId);
 			if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
 				$payment_result = $response->data->attributes->processor_state;
 				break;
@@ -308,7 +308,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			sleep(2);
 		}
 
-		$order->set_transaction_id($edgeChargeId);
+		$order->set_transaction_id($edgePaymentDemandId);
 
 		if ('succeeded' === $payment_result) {
 			$order = wc_get_order($order_id);
