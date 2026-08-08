@@ -55,6 +55,14 @@ final class WC_Edge_Subscription_Reconciler {
 	 * @return string
 	 */
 	public static function callback_url() {
+		// Overridable for development, where the address Edge must dial is not
+		// always the site's own URL. A local WordPress server may bind IPv6-only
+		// while the caller resolves `localhost` to IPv4 first, which fails to
+		// connect with no HTTP response to explain why.
+		if ( defined( 'EDGE_WEBHOOK_CALLBACK_URL' ) && is_string( EDGE_WEBHOOK_CALLBACK_URL ) && '' !== EDGE_WEBHOOK_CALLBACK_URL ) {
+			return EDGE_WEBHOOK_CALLBACK_URL;
+		}
+
 		return rest_url( WC_Edge_Webhook_Controller::NAMESPACE_V1 . WC_Edge_Webhook_Controller::ROUTE );
 	}
 
@@ -236,7 +244,10 @@ final class WC_Edge_Subscription_Reconciler {
 			return null;
 		}
 
-		return (string) $response->data->attributes->url === $callback ? $response->data : null;
+		// Returned even when the URL has drifted - a site that moved should have
+		// its existing subscription corrected rather than accumulate a second
+		// one pointing at the old address.
+		return $response->data;
 	}
 
 	/**
@@ -285,9 +296,10 @@ final class WC_Edge_Subscription_Reconciler {
 		$events = isset( $existing->attributes->events ) ? (array) $existing->attributes->events : array();
 		$status = isset( $existing->attributes->status ) ? (string) $existing->attributes->status : '';
 
+		$url_drifted  = ! isset( $existing->attributes->url ) || (string) $existing->attributes->url !== $callback;
 		$needs_events = array_diff( self::EVENTS, $events );
 
-		if ( ! empty( $needs_events ) || 'active' !== $status ) {
+		if ( ! empty( $needs_events ) || 'active' !== $status || $url_drifted ) {
 			\Edge\Client::patch(
 				'webhook_subscriptions/' . rawurlencode( $id ),
 				array(
@@ -297,6 +309,7 @@ final class WC_Edge_Subscription_Reconciler {
 						'attributes' => array(
 							'events' => array_values( array_unique( array_merge( $events, self::EVENTS ) ) ),
 							'status' => 'active',
+							'url'    => $callback,
 						),
 					),
 				)
