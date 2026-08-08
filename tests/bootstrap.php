@@ -39,6 +39,17 @@ if ( ! function_exists( 'untrailingslashit' ) ) {
 	}
 }
 
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	/**
+	 * @param mixed $data Data to encode.
+	 * @return string|false
+	 */
+	function wp_json_encode( $data ) {
+		return json_encode( $data ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+	}
+}
+
 require_once __DIR__ . '/../includes/class-wc-edge-money.php';
 require_once __DIR__ . '/../includes/class-wc-edge-mode.php';
 require_once __DIR__ . '/../includes/class-wc-edge-client-factory.php';
+require_once __DIR__ . '/../includes/class-wc-edge-fingerprint.php';
