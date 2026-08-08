@@ -58,6 +58,8 @@ final class WC_Edge_REST_Controller {
 	 * @return true|WP_Error
 	 */
 	public static function permitted( WP_REST_Request $request ) {
+		self::ensure_cart_loaded();
+
 		$nonce = $request->get_header( 'X-WP-Nonce' );
 
 		if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
@@ -136,6 +138,30 @@ final class WC_Edge_REST_Controller {
 				'mode'           => $gateway->get_mode(),
 			)
 		);
+	}
+
+	/**
+	 * Make sure the shopper's cart and session exist for this request.
+	 *
+	 * WooCommerce loads the session and cart automatically for the front end and
+	 * for its own Store API namespace, but not for a custom REST route: there,
+	 * `WC()->session` and `WC()->cart` are null and the shopper looks like they
+	 * have no checkout in progress. `wc_load_cart()` is WooCommerce's own entry
+	 * point for exactly this case, and it adopts the existing session from the
+	 * request cookies rather than starting a new one.
+	 *
+	 * @return void
+	 */
+	private static function ensure_cart_loaded() {
+		if ( ! function_exists( 'WC' ) || ! function_exists( 'wc_load_cart' ) ) {
+			return;
+		}
+
+		if ( WC()->cart instanceof WC_Cart && WC()->session ) {
+			return;
+		}
+
+		wc_load_cart();
 	}
 
 	/**
