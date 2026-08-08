@@ -48,6 +48,30 @@ final class WC_Edge_Payment_Service {
 
 		$attempt = $claim['attempt'];
 
+		// An attempt already carried onto an order is spent - its demand has been
+		// confirmed and cannot pay for a second order. This happens when the same
+		// customer buys an identical cart again, producing the same fingerprint.
+		// Free the slot and claim afresh rather than handing back a used demand.
+		if ( WC_Edge_Attempt_Store::STATUS_ADOPTED === $attempt->status ) {
+			WC_Edge_Attempt_Store::release_facts_slot( $attempt->attempt_key );
+
+			$claim = WC_Edge_Attempt_Store::claim(
+				$facts['session_key'],
+				WC_Edge_Fingerprint::of( $facts ),
+				array(
+					'mode'         => $facts['mode'],
+					'amount_cents' => $facts['amount_cents'],
+					'currency'     => $facts['currency'],
+				)
+			);
+
+			if ( is_wp_error( $claim ) ) {
+				return $claim;
+			}
+
+			$attempt = $claim['attempt'];
+		}
+
 		// Already complete: the same facts always map to the same demand, so
 		// refreshes and remounts reuse it rather than creating another.
 		if ( ! empty( $attempt->demand_id ) ) {

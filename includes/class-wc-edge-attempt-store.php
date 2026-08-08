@@ -275,10 +275,41 @@ final class WC_Edge_Attempt_Store {
 		return self::update(
 			$attempt_key,
 			array(
-				'status'   => self::STATUS_ADOPTED,
-				'order_id' => (int) $order_id,
+				'status'     => self::STATUS_ADOPTED,
+				'order_id'   => (int) $order_id,
+				// Free the (session_key, facts_hash) slot. An adopted attempt is
+				// spent: its demand has been confirmed against one order and
+				// cannot serve another. Without this, a customer buying the same
+				// cart twice produces the same fingerprint, matches this row, and
+				// is handed a demand that is already used - leaving the second
+				// order with no binding at all.
+				'facts_hash' => self::spent_hash( $attempt_key ),
 			)
 		);
+	}
+
+	/**
+	 * Release an attempt's fingerprint slot without adopting it.
+	 *
+	 * Heals rows adopted before the slot was freed on adoption.
+	 *
+	 * @param string $attempt_key Attempt key.
+	 * @return bool
+	 */
+	public static function release_facts_slot( $attempt_key ) {
+		return self::update( $attempt_key, array( 'facts_hash' => self::spent_hash( $attempt_key ) ) );
+	}
+
+	/**
+	 * A fingerprint that can never collide with a real one.
+	 *
+	 * Derived from the attempt key, so it is unique per row and stable.
+	 *
+	 * @param string $attempt_key Attempt key.
+	 * @return string
+	 */
+	private static function spent_hash( $attempt_key ) {
+		return hash( 'sha256', 'spent:' . $attempt_key );
 	}
 
 	/**
