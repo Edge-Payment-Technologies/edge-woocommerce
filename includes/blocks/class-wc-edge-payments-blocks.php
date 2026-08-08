@@ -28,13 +28,6 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType {
 	const EDGE_JS_HANDLE = 'edge-js';
 
 	/**
-	 * Canonical URL of the browser SDK.
-	 *
-	 * @var string
-	 */
-	const EDGE_JS_URL = 'https://assets.tryedge.io/edge.js';
-
-	/**
 	 * The gateway instance.
 	 *
 	 * @var WC_Gateway_Edge|null
@@ -81,7 +74,7 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType {
 		// WordPress handles deduplication across remounts.
 		wp_register_script(
 			self::EDGE_JS_HANDLE,
-			self::EDGE_JS_URL,
+			WC_Edge_Client_Factory::browser_sdk_url(),
 			array(),
 			null, // Version is Edge's to manage; a query string would bust their cache.
 			true

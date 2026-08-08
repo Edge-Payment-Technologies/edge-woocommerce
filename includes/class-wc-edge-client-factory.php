@@ -29,6 +29,20 @@ final class WC_Edge_Client_Factory {
 	const DEFAULT_DASHBOARD_HOST = 'https://dashboard.tryedge.io';
 
 	/**
+	 * Canonical URL of Edge's hosted browser SDK.
+	 *
+	 * Edge's developer page hands out a content-hashed path
+	 * (`.../edge-<digest>.js?vsn=d`), which is cache-optimal but changes on every
+	 * deploy. The previous version of this plugin hard-coded one such digest and
+	 * broke when it moved. This undigested path serves a byte-identical file -
+	 * its ETag is the digest - and survives redeploys, which matters more here
+	 * than the cache headers on an 8 KB script.
+	 *
+	 * @var string
+	 */
+	const DEFAULT_BROWSER_SDK_URL = 'https://assets.tryedge.io/assets/js/edge.js';
+
+	/**
 	 * Suffix of Edge's production hostnames. TLS verification is never
 	 * negotiable for these.
 	 *
@@ -138,6 +152,22 @@ final class WC_Edge_Client_Factory {
 		}
 
 		return self::DEFAULT_DASHBOARD_HOST;
+	}
+
+	/**
+	 * URL of the hosted browser SDK.
+	 *
+	 * Overridable for local development, where the SDK is served unminified from
+	 * the dashboard host rather than the assets CDN.
+	 *
+	 * @return string
+	 */
+	public static function browser_sdk_url() {
+		if ( defined( 'EDGE_BROWSER_SDK_URL' ) && is_string( EDGE_BROWSER_SDK_URL ) && '' !== EDGE_BROWSER_SDK_URL ) {
+			return EDGE_BROWSER_SDK_URL;
+		}
+
+		return self::DEFAULT_BROWSER_SDK_URL;
 	}
 
 	/**
