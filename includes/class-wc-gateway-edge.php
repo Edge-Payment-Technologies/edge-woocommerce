@@ -118,6 +118,11 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 				/* translators: %s: example key prefix. */
 				'description' => sprintf( __( 'Server-only key, starting %s. Never shared with the browser.', 'edge-gateway' ), '<code>ept_live_s</code>' ),
 			),
+			'webhook_secret'  => array(
+				'title'       => __( 'Webhook signing secret', 'edge-gateway' ),
+				'type'        => 'password',
+				'description' => __( 'Leave blank if your API key can manage webhook subscriptions - the gateway registers its own and stores the secret automatically. Fill this in only if you created the subscription in the Edge dashboard yourself, and paste the secret Edge generated for it. Orders stay on hold until a webhook can be verified.', 'edge-gateway' ),
+			),
 		);
 	}
 
@@ -148,7 +153,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 			return $saved;
 		}
 
-		self::sync_webhook_subscription();
+		$this->sync_webhook_subscription();
 
 		return $saved;
 	}
@@ -162,7 +167,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 	 *
 	 * @return void
 	 */
-	private static function sync_webhook_subscription() {
+	private function sync_webhook_subscription() {
 		// Re-read the gateway so it reflects what was just saved.
 		$gateway = new self();
 
@@ -170,6 +175,25 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 
 		if ( ! is_wp_error( $result ) ) {
 			WC_Admin_Settings::add_message( __( 'Edge Payments: webhooks are registered.', 'edge-gateway' ) );
+
+			return;
+		}
+
+		// A 403 here means the API key has no webhook_subscriptions permission,
+		// which is a token scope decision rather than a mistake in the settings.
+		// Point at the manual secret instead of implying the keys are wrong.
+		if ( false !== stripos( $result->get_error_message(), 'forbidden' ) ) {
+			if ( '' !== trim( (string) $this->get_option( 'webhook_secret' ) ) ) {
+				WC_Admin_Settings::add_message(
+					__( 'Edge Payments: settings saved. Using the webhook signing secret you supplied, since this API key cannot manage webhook subscriptions.', 'edge-gateway' )
+				);
+
+				return;
+			}
+
+			WC_Admin_Settings::add_error(
+				__( 'Edge Payments: this API key is not permitted to manage webhook subscriptions, so the gateway could not register its own. Create a webhook in the Edge dashboard pointing at this site and paste its signing secret into "Webhook signing secret", or ask Edge to grant the key the developer.webhook_subscriptions permission. Until then orders will stay on hold.', 'edge-gateway' )
+			);
 
 			return;
 		}

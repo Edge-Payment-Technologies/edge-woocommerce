@@ -86,6 +86,23 @@ final class WC_Edge_Subscription_Reconciler {
 			}
 		}
 
+		// A merchant whose API key cannot manage webhook subscriptions has to
+		// create one in the Edge dashboard and paste its secret in. Without this
+		// escape hatch such a store could never verify a webhook, and its orders
+		// would sit on hold forever.
+		$settings = get_option( 'woocommerce_edge_settings', array() );
+		$manual   = isset( $settings['webhook_secret'] ) ? trim( (string) $settings['webhook_secret'] ) : '';
+
+		if ( '' !== $manual ) {
+			$mode = WC_Edge_Mode::mode_of(
+				isset( $settings['publishable_key'] ) ? $settings['publishable_key'] : ''
+			);
+
+			if ( $mode ) {
+				$secrets[ $mode ] = $manual;
+			}
+		}
+
 		return $secrets;
 	}
 
@@ -131,8 +148,12 @@ final class WC_Edge_Subscription_Reconciler {
 	/**
 	 * Whether Edge could plausibly reach this URL.
 	 *
-	 * Saves a confusing round trip on a local site, where a subscription would
-	 * be created that can never deliver.
+	 * Saves a confusing round trip when a subscription would be created that can
+	 * never deliver. What counts as reachable depends on where Edge is: a
+	 * production API cannot reach `localhost`, but a backend running on the same
+	 * machine reaches it perfectly well, which is the normal local development
+	 * setup. So a private callback is only rejected when the API itself is
+	 * public.
 	 *
 	 * @param string $url Callback URL.
 	 * @return bool
@@ -144,13 +165,34 @@ final class WC_Edge_Subscription_Reconciler {
 			return false;
 		}
 
-		$host = strtolower( $host );
-
-		if ( 'localhost' === $host || '127.0.0.1' === $host || '::1' === $host ) {
-			return false;
+		if ( ! self::is_private_host( $host ) ) {
+			return true;
 		}
 
-		return ! preg_match( '/\.(test|local|localhost|invalid|example)$/', $host );
+		// Both ends are local, so delivery works.
+		return self::is_private_host(
+			(string) wp_parse_url( WC_Edge_Client_Factory::api_base_uri(), PHP_URL_HOST )
+		);
+	}
+
+	/**
+	 * Whether a hostname is one only this machine or network can resolve.
+	 *
+	 * @param string $host Hostname.
+	 * @return bool
+	 */
+	private static function is_private_host( $host ) {
+		$host = strtolower( trim( (string) $host ) );
+
+		if ( '' === $host ) {
+			return true;
+		}
+
+		if ( in_array( $host, array( 'localhost', '127.0.0.1', '::1' ), true ) ) {
+			return true;
+		}
+
+		return (bool) preg_match( '/\.(test|local|localhost|internal|invalid|example)$/', $host );
 	}
 
 	/**
