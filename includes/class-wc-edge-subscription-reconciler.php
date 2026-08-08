@@ -131,7 +131,17 @@ final class WC_Edge_Subscription_Reconciler {
 		try {
 			WC_Edge_Client_Factory::configure( $gateway->get_secret_key() );
 
-			$existing = self::find_by_url( $callback );
+			// Prefer the subscription we already know about. Fetching it by id is
+			// both more direct than searching by URL and immune to the index
+			// endpoint, which currently returns 500.
+			$existing = self::fetch_known( $mode, $callback );
+
+			// Only fall back to searching when we have nothing recorded - after a
+			// reinstall, say. Treated as best effort so a broken index does not
+			// stop a site registering.
+			if ( ! $existing ) {
+				$existing = self::find_by_url( $callback );
+			}
 
 			if ( $existing ) {
 				return self::adopt( $mode, $existing, $callback );
@@ -196,13 +206,58 @@ final class WC_Edge_Subscription_Reconciler {
 	}
 
 	/**
+	 * Re-read the subscription we recorded for this mode.
+	 *
+	 * Returns null when nothing is recorded, when it no longer exists at Edge, or
+	 * when its URL has moved on - in each case the caller should search or
+	 * create rather than adopt something that is no longer ours.
+	 *
+	 * @param string $mode     Mode.
+	 * @param string $callback Expected callback URL.
+	 * @return object|null
+	 */
+	private static function fetch_known( $mode, $callback ) {
+		$stored = self::stored();
+
+		if ( empty( $stored[ $mode ]['id'] ) ) {
+			return null;
+		}
+
+		try {
+			$response = \Edge\Client::get(
+				'webhook_subscriptions/' . rawurlencode( (string) $stored[ $mode ]['id'] )
+			);
+		} catch ( \Throwable $e ) {
+			// Deleted, archived, or belonging to rotated credentials.
+			return null;
+		}
+
+		if ( ! isset( $response->data->attributes->url ) ) {
+			return null;
+		}
+
+		return (string) $response->data->attributes->url === $callback ? $response->data : null;
+	}
+
+	/**
 	 * Find our subscription by callback URL.
+	 *
+	 * Best effort: the collection endpoint currently returns 500, and a site with
+	 * no record of a previous subscription should still be able to register one.
+	 * The cost of the index being unavailable is a possible duplicate after a
+	 * reinstall, which is better than being unable to receive webhooks at all.
 	 *
 	 * @param string $callback Callback URL.
 	 * @return object|null
 	 */
 	private static function find_by_url( $callback ) {
-		$response = \Edge\Client::get( 'webhook_subscriptions', array( 'page' => array( 'size' => 100 ) ) );
+		try {
+			$response = \Edge\Client::get( 'webhook_subscriptions', array( 'page' => array( 'size' => 100 ) ) );
+		} catch ( \Throwable $e ) {
+			WC_Edge_Logger::info( 'Could not list webhook subscriptions: ' . $e->getMessage() );
+
+			return null;
+		}
 
 		foreach ( (array) ( isset( $response->data ) ? $response->data : array() ) as $subscription ) {
 			if ( ! isset( $subscription->attributes->url ) ) {
