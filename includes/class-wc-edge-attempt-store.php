@@ -152,8 +152,11 @@ final class WC_Edge_Attempt_Store {
 		$wpdb->suppress_errors( $suppressed );
 
 		if ( false !== $inserted ) {
+			// Return the full row shape, not just the inserted columns, so a
+			// caller reading a not-yet-populated id gets null rather than an
+			// undefined-property warning.
 			return array(
-				'attempt' => (object) $row,
+				'attempt' => (object) array_merge( self::nullable_defaults(), $row ),
 				'claimed' => true,
 			);
 		}
@@ -171,6 +174,21 @@ final class WC_Edge_Attempt_Store {
 		return new WP_Error(
 			'edge_attempt_not_stored',
 			__( 'Could not start the payment. Please try again.', 'edge-gateway' )
+		);
+	}
+
+	/**
+	 * Columns that are null until the resource they name has been created.
+	 *
+	 * @return array<string,null>
+	 */
+	private static function nullable_defaults() {
+		return array(
+			'customer_id'         => null,
+			'billing_address_id'  => null,
+			'shipping_address_id' => null,
+			'demand_id'           => null,
+			'order_id'            => null,
 		);
 	}
 

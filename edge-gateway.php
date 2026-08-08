@@ -144,6 +144,14 @@ class WC_Edge_Payments {
 		require_once $path . 'class-wc-edge-attempt-store.php';
 		require_once $path . 'class-wc-edge-fingerprint.php';
 		require_once $path . 'class-wc-edge-order-mapper.php';
+		require_once $path . 'class-wc-edge-logger.php';
+		require_once $path . 'class-wc-edge-payment-service.php';
+		require_once $path . 'class-wc-edge-rest-controller.php';
+
+		add_action( 'rest_api_init', array( 'WC_Edge_REST_Controller', 'register' ) );
+
+		// Bind the pre-order attempt to the order the moment one exists.
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( __CLASS__, 'adopt_attempt' ), 10, 1 );
 
 		self::maybe_upgrade_settings();
 
@@ -210,6 +218,58 @@ class WC_Edge_Payments {
 		}
 
 		update_option( 'woocommerce_edge_settings', $settings );
+	}
+
+	/**
+	 * Carry the checkout attempt onto the order that was just created.
+	 *
+	 * Until this point the payment demand belongs to a session, because the
+	 * iframe had to mount before an order existed. From here on the order is the
+	 * binding, and it is what process_payment() and the webhook handler trust -
+	 * never a value supplied by the browser.
+	 *
+	 * @param WC_Order $order Newly created order.
+	 * @return void
+	 */
+	public static function adopt_attempt( $order ) {
+		if ( ! $order instanceof WC_Order || 'edge' !== $order->get_payment_method() ) {
+			return;
+		}
+
+		if ( ! WC()->session || ! WC()->session->get_customer_id() ) {
+			return;
+		}
+
+		global $wpdb;
+
+		$table       = WC_Edge_Attempt_Store::table_name();
+		$session_key = (string) WC()->session->get_customer_id();
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$attempt = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$table}
+				 WHERE session_key = %s AND status = %s AND demand_id IS NOT NULL
+				 ORDER BY updated_at DESC LIMIT 1",
+				$session_key,
+				WC_Edge_Attempt_Store::STATUS_PREPARED
+			)
+		);
+		// phpcs:enable
+
+		if ( ! $attempt ) {
+			return;
+		}
+
+		// CRUD rather than update_post_meta, so this works under HPOS.
+		$order->update_meta_data( '_edge_demand_id', $attempt->demand_id );
+		$order->update_meta_data( '_edge_attempt_key', $attempt->attempt_key );
+		$order->update_meta_data( '_edge_mode', $attempt->mode );
+		$order->update_meta_data( '_edge_amount_cents', $attempt->amount_cents );
+		$order->update_meta_data( '_edge_currency', $attempt->currency );
+		$order->save();
+
+		WC_Edge_Attempt_Store::adopt( $attempt->attempt_key, $order->get_id() );
 	}
 
 	/**

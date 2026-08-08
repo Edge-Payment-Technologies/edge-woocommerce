@@ -202,6 +202,28 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 	}
 
 	/**
+	 * The secret key, for server-side calls only.
+	 *
+	 * @return string
+	 */
+	public function get_secret_key() {
+		return $this->secret_key;
+	}
+
+	/**
+	 * The publishable key, safe to hand to the browser.
+	 *
+	 * Re-checked rather than returned blindly: settings can be written by WP-CLI,
+	 * a migration or direct SQL, and a secret key reaching the browser is not a
+	 * mistake worth risking on the save-time check alone.
+	 *
+	 * @return string
+	 */
+	public function get_publishable_key() {
+		return WC_Edge_Mode::is_publishable( $this->publishable_key ) ? $this->publishable_key : '';
+	}
+
+	/**
 	 * Whether the gateway can be offered for the current request.
 	 *
 	 * Every reason to decline is checked here rather than at payment time, so a
