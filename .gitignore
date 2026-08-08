@@ -52,3 +52,7 @@ select2.scss
 
 # PHPUnit
 .phpunit.result.cache
+
+# Release build output
+/dist/
+bin/php-scoper.phar
