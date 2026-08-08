@@ -1,54 +1,112 @@
 <?php
-
 /**
  * Plugin Name: Edge Payments Gateway
  * Plugin URI: https://github.com/Edge-Payment-Technologies/edge-woocommerce
  * Description: Adds the Edge Payments gateway to your WooCommerce website.
- * Version: 1.0.6
+ * Version: 2.0.0
  *
  * Author: Edge Payments
- * Author URI: https://tryedge.com
+ * Author URI: https://tryedge.io
+ *
+ * Requires at least: 6.9
+ * Requires PHP: 7.4
+ * Requires Plugins: woocommerce
+ * WC requires at least: 11.0
+ * WC tested up to: 11.0
+ *
+ * License: GPL-3.0-or-later
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
  * Text Domain: edge-gateway
- * Domain Path: /i18n/languages/
+ * Domain Path: /languages
+ *
+ * @package WooCommerce Edge Payments Gateway
  */
 
 // Exit if accessed directly.
-if (!defined('ABSPATH')) {
+if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+define( 'WC_EDGE_VERSION', '2.0.0' );
+define( 'WC_EDGE_PLUGIN_FILE', __FILE__ );
 
 /**
  * WC Edge Payment gateway plugin class.
  *
  * @class WC_Edge_Payments
  */
-class WC_Edge_Payments
-{
+class WC_Edge_Payments {
 
 	/**
 	 * Plugin bootstrapping.
 	 */
-	public static function init()
-	{
+	public static function init() {
+		// Composer dependencies must be present before anything else is registered.
+		if ( ! self::load_dependencies() ) {
+			add_action( 'admin_notices', array( __CLASS__, 'render_missing_dependencies_notice' ) );
+
+			return;
+		}
 
 		// Edge Payments gateway class.
-		add_action('plugins_loaded', array(__CLASS__, 'includes'), 0);
+		add_action( 'plugins_loaded', array( __CLASS__, 'includes' ), 0 );
 
 		// Make the Edge Payments gateway available to WC.
-		add_filter('woocommerce_payment_gateways', array(__CLASS__, 'add_gateway'));
+		add_filter( 'woocommerce_payment_gateways', array( __CLASS__, 'add_gateway' ) );
 
 		// Registers WooCommerce Blocks integration.
-		add_action('woocommerce_blocks_loaded', array(__CLASS__, 'woocommerce_gateway_edge_woocommerce_block_support'));
+		add_action( 'woocommerce_blocks_loaded', array( __CLASS__, 'woocommerce_gateway_edge_woocommerce_block_support' ) );
+	}
+
+	/**
+	 * Load the Composer autoloader.
+	 *
+	 * `vendor/` is a build artifact and is not committed, so a checkout without
+	 * `composer install` is a normal state rather than an exceptional one. Failing
+	 * soft here keeps that from taking the whole site down.
+	 *
+	 * @return bool Whether the Edge SDK is available.
+	 */
+	private static function load_dependencies() {
+		if ( class_exists( '\Edge\Client' ) ) {
+			return true;
+		}
+
+		$autoload = self::plugin_abspath() . 'vendor/autoload.php';
+
+		if ( ! is_readable( $autoload ) ) {
+			return false;
+		}
+
+		require_once $autoload;
+
+		return class_exists( '\Edge\Client' );
+	}
+
+	/**
+	 * Tell the administrator why the gateway did not load.
+	 */
+	public static function render_missing_dependencies_notice() {
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			return;
+		}
+
+		echo '<div class="notice notice-error"><p>';
+		echo esc_html__(
+			'Edge Payments Gateway could not start because its dependencies are missing. Run "composer install" in the plugin directory.',
+			'edge-gateway'
+		);
+		echo '</p></div>';
 	}
 
 	/**
 	 * Add the Edge Payment gateway to the list of available gateways.
 	 *
-	 * @param array
+	 * @param array $gateways Registered gateways.
+	 * @return array
 	 */
-	public static function add_gateway($gateways)
-	{
+	public static function add_gateway( $gateways ) {
 
 		$gateways[] = 'WC_Gateway_Edge';
 
@@ -58,12 +116,17 @@ class WC_Edge_Payments
 	/**
 	 * Plugin includes.
 	 */
-	public static function includes()
-	{
+	public static function includes() {
+
+		$path = self::plugin_abspath() . 'includes/';
+
+		require_once $path . 'class-wc-edge-money.php';
+		require_once $path . 'class-wc-edge-mode.php';
+		require_once $path . 'class-wc-edge-client-factory.php';
 
 		// Make the WC_Gateway_Edge class available.
-		if (class_exists('WC_Payment_Gateway')) {
-			require_once 'includes/class-wc-gateway-edge.php';
+		if ( class_exists( 'WC_Payment_Gateway' ) ) {
+			require_once $path . 'class-wc-gateway-edge.php';
 		}
 	}
 
@@ -72,33 +135,29 @@ class WC_Edge_Payments
 	 *
 	 * @return string
 	 */
-	public static function plugin_url()
-	{
-		return untrailingslashit(plugins_url('/', __FILE__));
+	public static function plugin_url() {
+		return untrailingslashit( plugins_url( '/', __FILE__ ) );
 	}
 
 	/**
-	 * Plugin url.
+	 * Plugin path.
 	 *
 	 * @return string
 	 */
-	public static function plugin_abspath()
-	{
-		return trailingslashit(plugin_dir_path(__FILE__));
+	public static function plugin_abspath() {
+		return trailingslashit( plugin_dir_path( __FILE__ ) );
 	}
 
 	/**
 	 * Registers WooCommerce Blocks integration.
-	 *
 	 */
-	public static function woocommerce_gateway_edge_woocommerce_block_support()
-	{
-		if (class_exists('Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType')) {
-			require_once 'includes/blocks/class-wc-edge-payments-blocks.php';
+	public static function woocommerce_gateway_edge_woocommerce_block_support() {
+		if ( class_exists( 'Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType' ) ) {
+			require_once self::plugin_abspath() . 'includes/blocks/class-wc-edge-payments-blocks.php';
 			add_action(
 				'woocommerce_blocks_payment_method_type_registration',
-				function (Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry) {
-					$payment_method_registry->register(new WC_Gateway_Edge_Blocks_Support());
+				function ( Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry ) {
+					$payment_method_registry->register( new WC_Gateway_Edge_Blocks_Support() );
 				}
 			);
 		}

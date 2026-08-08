@@ -1,10 +1,7 @@
 <?php
-
-require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php');
-
-
 /**
  * WC_Gateway_Edge class
+ *
  * @package  WooCommerce Edge Payments Gateway
  * @since    1.0.0
  */
@@ -18,7 +15,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.5
+ * @version  2.0.0
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {

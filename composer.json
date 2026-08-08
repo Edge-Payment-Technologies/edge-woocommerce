@@ -1,19 +1,27 @@
 {
   "name": "edge-payment-technologies/edge-woocommerce",
   "description": "Edge Payments WooCommerce Plugin",
-  "type": "plugin",
+  "type": "wordpress-plugin",
+  "license": "GPL-3.0-or-later",
   "repositories": [
     {
       "type": "vcs",
       "url": "https://github.com/Edge-Payment-Technologies/edge-php-sdk"
     }
   ],
-  "autoload": {
+  "require": {
+    "php": "^7.4 || ^8.0",
+    "edge-payment-technologies/edge-php-sdk": "dev-main"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.6"
+  },
+  "autoload-dev": {
     "psr-4": {
-      "EdgePayments\\EdgeWoocommerce\\": "src/"
+      "EdgePayments\\EdgeWoocommerce\\Tests\\": "tests/"
     }
   },
-  "require": {
-    "edge-payment-technologies/edge-php-sdk": "dev-main"
+  "scripts": {
+    "test": "phpunit"
   }
 }
