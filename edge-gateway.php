@@ -142,6 +142,8 @@ class WC_Edge_Payments {
 		require_once $path . 'class-wc-edge-mode.php';
 		require_once $path . 'class-wc-edge-client-factory.php';
 		require_once $path . 'class-wc-edge-attempt-store.php';
+		require_once $path . 'class-wc-edge-fingerprint.php';
+		require_once $path . 'class-wc-edge-order-mapper.php';
 
 		self::maybe_upgrade_settings();
 

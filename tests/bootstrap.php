@@ -49,7 +49,72 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 	}
 }
 
+if ( ! function_exists( '__' ) ) {
+	/**
+	 * @param string $text   Text to translate.
+	 * @param string $domain Text domain.
+	 * @return string
+	 */
+	function __( $text, $domain = 'default' ) { // phpcs:ignore WordPress.NamingConventions
+		return $text;
+	}
+}
+
+if ( ! class_exists( 'WP_Error' ) ) {
+	/**
+	 * Minimal stand-in for WordPress's WP_Error, sufficient for these tests.
+	 */
+	class WP_Error { // phpcs:ignore WordPress.NamingConventions
+
+		/** @var string */
+		private $code;
+
+		/** @var string */
+		private $message;
+
+		/** @var mixed */
+		private $data;
+
+		/**
+		 * @param string $code    Error code.
+		 * @param string $message Error message.
+		 * @param mixed  $data    Error data.
+		 */
+		public function __construct( $code = '', $message = '', $data = '' ) {
+			$this->code    = $code;
+			$this->message = $message;
+			$this->data    = $data;
+		}
+
+		/** @return string */
+		public function get_error_code() {
+			return $this->code;
+		}
+
+		/** @return string */
+		public function get_error_message() {
+			return $this->message;
+		}
+
+		/** @return mixed */
+		public function get_error_data() {
+			return $this->data;
+		}
+	}
+}
+
+if ( ! function_exists( 'is_wp_error' ) ) {
+	/**
+	 * @param mixed $thing Value to check.
+	 * @return bool
+	 */
+	function is_wp_error( $thing ) {
+		return $thing instanceof WP_Error;
+	}
+}
+
 require_once __DIR__ . '/../includes/class-wc-edge-money.php';
 require_once __DIR__ . '/../includes/class-wc-edge-mode.php';
 require_once __DIR__ . '/../includes/class-wc-edge-client-factory.php';
 require_once __DIR__ . '/../includes/class-wc-edge-fingerprint.php';
+require_once __DIR__ . '/../includes/class-wc-edge-order-mapper.php';
