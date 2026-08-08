@@ -57,6 +57,24 @@ class WC_Edge_Payments {
 
 		// Registers WooCommerce Blocks integration.
 		add_action( 'woocommerce_blocks_loaded', array( __CLASS__, 'woocommerce_gateway_edge_woocommerce_block_support' ) );
+
+		register_activation_hook( __FILE__, array( __CLASS__, 'activate' ) );
+	}
+
+	/**
+	 * Plugin activation.
+	 *
+	 * @return void
+	 */
+	public static function activate() {
+		if ( ! self::load_dependencies() ) {
+			return;
+		}
+
+		require_once self::plugin_abspath() . 'includes/class-wc-edge-attempt-store.php';
+
+		WC_Edge_Attempt_Store::install();
+		update_option( WC_Edge_Attempt_Store::SCHEMA_OPTION, WC_Edge_Attempt_Store::SCHEMA_VERSION );
 	}
 
 	/**
@@ -123,8 +141,14 @@ class WC_Edge_Payments {
 		require_once $path . 'class-wc-edge-money.php';
 		require_once $path . 'class-wc-edge-mode.php';
 		require_once $path . 'class-wc-edge-client-factory.php';
+		require_once $path . 'class-wc-edge-attempt-store.php';
 
 		self::maybe_upgrade_settings();
+
+		// The plugin is symlinked in development, where activation hooks do not
+		// always fire, so the schema is checked here as well. The check is a
+		// single option read when the version already matches.
+		WC_Edge_Attempt_Store::maybe_install();
 
 		// Make the WC_Gateway_Edge class available.
 		if ( class_exists( 'WC_Payment_Gateway' ) ) {
