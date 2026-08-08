@@ -1,4 +1,4 @@
-name: PHP Composer
+name: PHP
 
 on:
   push:
@@ -10,30 +10,109 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  test:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor and the ceiling of the supported range. WooCommerce 11
+        # requires PHP 7.4, and 8.3 is what development runs on, so both need to
+        # stay green.
+        php: [ '7.4', '8.3' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-lock
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-php${{ matrix.php }}-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-php${{ matrix.php }}-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      # Guards the trap that has already caught us once: the composer constraint
+      # alone never proves which SDK resolved. dev-main still points at the
+      # pre-v2 release, which has no Client::confirm().
+      - name: Verify the Edge v2 SDK is installed
+        run: |
+          php -r '
+            require "vendor/autoload.php";
+            $r = new ReflectionClass("Edge\\Client");
+            $problems = [];
+            if ( $r->getConstant("VERSION") !== "2.0.0" ) {
+              $problems[] = "VERSION is " . var_export($r->getConstant("VERSION"), true);
+            }
+            if ( strpos((string) $r->getConstant("DEFAULT_BASE_URI"), "/v2/") === false ) {
+              $problems[] = "base URI is not a v2 root";
+            }
+            foreach ( ["confirm", "patch", "setBaseUri"] as $m ) {
+              if ( ! $r->hasMethod($m) ) { $problems[] = "missing {$m}()"; }
+            }
+            if ( $problems ) {
+              fwrite(STDERR, "Not the Edge v2 SDK: " . implode("; ", $problems) . "\n\n");
+              fwrite(STDERR, "This is expected until the SDK is released. composer.json\n");
+              fwrite(STDERR, "requires dev-main, and edge-php-sdk main is still the\n");
+              fwrite(STDERR, "July-2024 pre-v2 commit. To fix: merge feature/v2-api-mapping,\n");
+              fwrite(STDERR, "tag v2.0.0, then change the constraint here to ^2.0.\n");
+              exit(1);
+            }
+            echo "Edge v2 SDK OK\n";
+          '
+
+      - name: Lint PHP syntax
+        run: |
+          find . -name '*.php' \
+            -not -path './vendor/*' \
+            -not -path './node_modules/*' \
+            -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+
+      - name: Coding standards
+        run: composer run-script lint
+
+      - name: Unit tests
+        run: composer run-script test
+
+  javascript:
+    name: JavaScript
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Validate composer.json and composer.lock
-      run: composer validate --strict
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.tool-versions'
+          cache: npm
 
-    - name: Cache Composer packages
-      id: composer-cache
-      uses: actions/cache@v3
-      with:
-        path: vendor
-        key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-php-
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Install dependencies
-      run: composer install --prefer-dist --no-progress
+      - name: Build
+        run: npm run build
 
-    # Add a test script to composer.json, for instance: "test": "vendor/bin/phpunit"
-    # Docs: https://getcomposer.org/doc/articles/scripts.md
-
-    # - name: Run test suite
-    #   run: composer run-script test
+      # The bundle must never contain card handling: the hosted iframe collects
+      # the card and only an opaque demand id crosses back into WooCommerce.
+      - name: Assert no card data in the bundle
+        run: |
+          if grep -qiE 'encryptedCard|card_pan_token|card_cvv_token|initializeForm' assets/js/frontend/blocks.js; then
+            echo "Card handling found in the built bundle." >&2
+            exit 1
+          fi
+          echo "No card handling in the bundle."
