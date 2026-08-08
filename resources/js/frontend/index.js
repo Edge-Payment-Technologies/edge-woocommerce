@@ -211,7 +211,21 @@ const EdgePaymentForm = ( { eventRegistration, emitResponse } ) => {
 		];
 
 		try {
-			client.mountPaymentForm( containerId, demandId );
+			const iframe = client.mountPaymentForm( containerId, demandId );
+
+			// The SDK sizes the iframe from its own contentRect, but that content
+			// is constrained by the iframe's current width — which starts at the
+			// browser default of 300px. Left alone it measures 300, reports 300
+			// and never grows. An inline style beats the width attribute the SDK
+			// keeps setting, so the form fills the container and the 3DS
+			// challenge is sized from a realistic width rather than the smallest
+			// possible one.
+			if ( iframe ) {
+				iframe.style.width = '100%';
+				iframe.style.border = '0';
+				iframe.style.display = 'block';
+			}
+
 			mountedDemand.current = demandId;
 		} catch ( error ) {
 			setFailure(
