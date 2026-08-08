@@ -58,7 +58,37 @@ class WC_Edge_Payments {
 		// Registers WooCommerce Blocks integration.
 		add_action( 'woocommerce_blocks_loaded', array( __CLASS__, 'woocommerce_gateway_edge_woocommerce_block_support' ) );
 
+		add_action( 'before_woocommerce_init', array( __CLASS__, 'declare_compatibility' ) );
+
 		register_activation_hook( __FILE__, array( __CLASS__, 'activate' ) );
+	}
+
+	/**
+	 * Declare High-Performance Order Storage compatibility.
+	 *
+	 * Claimed only because it has been exercised: the gateway reads and writes
+	 * order data exclusively through the CRUD API, and complete payments -
+	 * binding, meta, status transitions and the webhook handler's order lookup by
+	 * meta - have all run against a store with HPOS enabled.
+	 *
+	 * @return void
+	 */
+	public static function declare_compatibility() {
+		if ( ! class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+			return;
+		}
+
+		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+			'custom_order_tables',
+			__FILE__,
+			true
+		);
+
+		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility(
+			'cart_checkout_blocks',
+			__FILE__,
+			true
+		);
 	}
 
 	/**
