@@ -124,10 +124,66 @@ class WC_Edge_Payments {
 		require_once $path . 'class-wc-edge-mode.php';
 		require_once $path . 'class-wc-edge-client-factory.php';
 
+		self::maybe_upgrade_settings();
+
 		// Make the WC_Gateway_Edge class available.
 		if ( class_exists( 'WC_Payment_Gateway' ) ) {
 			require_once $path . 'class-wc-gateway-edge.php';
 		}
+	}
+
+	/**
+	 * Collapse the old four-key settings into a single key pair.
+	 *
+	 * The previous layout stored separate sandbox and live pairs alongside a
+	 * `testmode` flag. The new layout keeps one pair and derives the mode from
+	 * the key prefix.
+	 *
+	 * The field name `publishable_key` existed before and meant "the live
+	 * publishable key". Adopting it verbatim would silently promote a store that
+	 * was running in test mode to live credentials, so the old flag decides which
+	 * pair is carried over. Anything that does not migrate to a valid, matching
+	 * pair is cleared and the gateway disabled: refusing to run is the safe
+	 * direction when the intended mode is ambiguous.
+	 *
+	 * @return void
+	 */
+	private static function maybe_upgrade_settings() {
+		$settings = get_option( 'woocommerce_edge_settings', array() );
+
+		// `testmode` is the marker of the old layout.
+		if ( ! is_array( $settings ) || ! array_key_exists( 'testmode', $settings ) ) {
+			return;
+		}
+
+		// The old blocks class treated anything other than "no" as test mode.
+		$was_sandbox = 'no' !== ( isset( $settings['testmode'] ) ? $settings['testmode'] : 'yes' );
+
+		$publishable = $was_sandbox
+			? ( isset( $settings['test_publishable_key'] ) ? $settings['test_publishable_key'] : '' )
+			: ( isset( $settings['publishable_key'] ) ? $settings['publishable_key'] : '' );
+
+		$secret = $was_sandbox
+			? ( isset( $settings['test_private_key'] ) ? $settings['test_private_key'] : '' )
+			: ( isset( $settings['private_key'] ) ? $settings['private_key'] : '' );
+
+		unset(
+			$settings['testmode'],
+			$settings['test_publishable_key'],
+			$settings['test_private_key'],
+			$settings['private_key']
+		);
+
+		$settings['publishable_key'] = trim( (string) $publishable );
+		$settings['secret_key']      = trim( (string) $secret );
+
+		if ( null !== WC_Edge_Mode::validate_pair( $settings['secret_key'], $settings['publishable_key'] ) ) {
+			$settings['publishable_key'] = '';
+			$settings['secret_key']      = '';
+			$settings['enabled']         = 'no';
+		}
+
+		update_option( 'woocommerce_edge_settings', $settings );
 	}
 
 	/**
