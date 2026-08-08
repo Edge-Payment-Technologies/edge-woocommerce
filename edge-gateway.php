@@ -8,7 +8,7 @@
  * Author: Edge Payments
  * Author URI: https://tryedge.io
  *
- * Requires at least: 6.9
+ * Requires at least: 6.4
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
  * WC requires at least: 9.0
