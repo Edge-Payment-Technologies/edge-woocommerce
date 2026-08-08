@@ -342,21 +342,83 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * Process the payment and return the result.
+	 * Confirm the bound payment demand and hand the order over to the webhook.
 	 *
-	 * Not yet reimplemented for Edge v2. The previous implementation posted card
-	 * tokens to `POST /payment_methods`, which does not exist in v2 - payment
-	 * methods are created by the hosted iframe - so there is nothing here worth
-	 * preserving. Failing explicitly is safer than leaving a path that cannot
-	 * succeed but looks as though it might.
+	 * No card data reaches this method: the hosted iframe collected and verified
+	 * the card, and all that crosses the boundary is an opaque demand id, which
+	 * is only ever used to cross-check the binding the server already holds.
 	 *
 	 * @param int $order_id Order ID.
 	 * @return array
-	 * @throws Exception Always, until the v2 flow lands.
 	 */
 	public function process_payment( $order_id ) {
-		throw new Exception(
-			esc_html__( 'Edge Payments is not available yet. Please choose another payment method.', 'edge-gateway' )
+		$order = wc_get_order( $order_id );
+
+		if ( ! $order instanceof WC_Order ) {
+			return $this->fail( __( 'That order could not be found.', 'edge-gateway' ) );
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- The Store API authenticates this request; this value is cross-checked against server-held order meta and never trusted on its own.
+		$submitted = isset( $_POST['edge_demand_id'] ) ? sanitize_text_field( wp_unslash( $_POST['edge_demand_id'] ) ) : '';
+
+		if ( '' !== $submitted && ! self::is_uuid( $submitted ) ) {
+			return $this->fail( __( 'That payment reference is not valid.', 'edge-gateway' ) );
+		}
+
+		$confirmed = WC_Edge_Payment_Service::confirm( $this, $order, $submitted );
+
+		if ( is_wp_error( $confirmed ) ) {
+			return $this->fail( $confirmed->get_error_message() );
+		}
+
+		$order->set_transaction_id( $confirmed );
+
+		// Confirming means Edge accepted the payment for processing, not that it
+		// succeeded. Completing the order here would mark it paid before the
+		// processor has said anything, so the order waits for the webhook, which
+		// is the authoritative source.
+		$order->update_status(
+			'on-hold',
+			__( 'Awaiting confirmation from Edge.', 'edge-gateway' )
+		);
+
+		$order->save();
+
+		return array(
+			'result'   => 'success',
+			'redirect' => $this->get_return_url( $order ),
+		);
+	}
+
+	/**
+	 * Build a checkout failure result.
+	 *
+	 * @param string $message Shopper-facing message.
+	 * @return array
+	 */
+	private function fail( $message ) {
+		wc_add_notice( $message, 'error' );
+
+		return array(
+			'result'  => 'failure',
+			'message' => $message,
+		);
+	}
+
+	/**
+	 * Whether a value is UUID-shaped.
+	 *
+	 * Input validation only. It says nothing about whether the resource belongs
+	 * to this order, which is what the binding check in the payment service is
+	 * for.
+	 *
+	 * @param string $value Candidate.
+	 * @return bool
+	 */
+	private static function is_uuid( $value ) {
+		return 1 === preg_match(
+			'/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i',
+			(string) $value
 		);
 	}
 }

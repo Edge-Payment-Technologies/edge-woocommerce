@@ -84,6 +84,259 @@ final class WC_Edge_Payment_Service {
 	}
 
 	/**
+	 * Revalidate the bound demand and confirm it.
+	 *
+	 * @param WC_Gateway_Edge $gateway   Gateway.
+	 * @param WC_Order        $order     Order being paid.
+	 * @param string          $submitted Demand id the browser sent, for cross-checking only.
+	 * @return string|WP_Error The confirmed demand id.
+	 */
+	public static function confirm( WC_Gateway_Edge $gateway, WC_Order $order, $submitted ) {
+		$bound = (string) $order->get_meta( '_edge_demand_id' );
+
+		if ( '' === $bound ) {
+			WC_Edge_Logger::error( 'Order ' . $order->get_id() . ' has no bound Edge demand.' );
+
+			return new WP_Error( 'edge_no_binding', self::generic_failure() );
+		}
+
+		// The browser's value never selects the resource; it only has to agree
+		// with the binding the server already made. A mismatch means the page and
+		// the order have diverged.
+		if ( '' !== (string) $submitted && ! hash_equals( $bound, (string) $submitted ) ) {
+			WC_Edge_Logger::error( 'Submitted demand does not match the order binding on order ' . $order->get_id() );
+
+			return new WP_Error(
+				'edge_binding_mismatch',
+				__( 'Your payment session no longer matches this order. Please reload and try again.', 'edge-gateway' )
+			);
+		}
+
+		try {
+			WC_Edge_Client_Factory::configure( $gateway->get_secret_key() );
+		} catch ( InvalidArgumentException $e ) {
+			return new WP_Error( 'edge_not_configured', self::generic_failure() );
+		}
+
+		$demand = self::fetch_demand( $bound );
+
+		if ( is_wp_error( $demand ) ) {
+			return $demand;
+		}
+
+		$mismatch = self::revalidate( $demand, $order );
+
+		if ( is_wp_error( $mismatch ) ) {
+			return $mismatch;
+		}
+
+		return self::do_confirm( $bound );
+	}
+
+	/**
+	 * Fetch a demand with its payment method included.
+	 *
+	 * @param string $demand_id Demand id.
+	 * @return object|WP_Error
+	 */
+	private static function fetch_demand( $demand_id ) {
+		try {
+			return \Edge\Client::get(
+				'payment_demands/' . rawurlencode( $demand_id ),
+				array( 'include' => 'payment_method' )
+			);
+		} catch ( \Throwable $e ) {
+			WC_Edge_Logger::error( 'Could not read demand ' . $demand_id . ': ' . $e->getMessage() );
+
+			return new WP_Error( 'edge_demand_unreadable', self::generic_failure() );
+		}
+	}
+
+	/**
+	 * Check the remote resource still matches the order it is bound to.
+	 *
+	 * A UUID being well formed says nothing about ownership, so every fact that
+	 * defines the payment is compared against the order before any money moves.
+	 *
+	 * @param object   $demand Demand document.
+	 * @param WC_Order $order  Order.
+	 * @return true|WP_Error
+	 */
+	private static function revalidate( $demand, WC_Order $order ) {
+		$attributes = isset( $demand->data->attributes ) ? $demand->data->attributes : null;
+
+		if ( ! $attributes ) {
+			return new WP_Error( 'edge_demand_malformed', self::generic_failure() );
+		}
+
+		try {
+			$expected_cents = WC_Edge_Money::to_cents( $order->get_total() );
+		} catch ( InvalidArgumentException $e ) {
+			return new WP_Error( 'edge_amount_invalid', self::generic_failure() );
+		}
+
+		$actual_cents = isset( $attributes->amount_cents ) ? (int) $attributes->amount_cents : -1;
+
+		if ( $actual_cents !== $expected_cents ) {
+			WC_Edge_Logger::error(
+				sprintf(
+					'Demand amount %d does not match order %d total %d.',
+					$actual_cents,
+					$order->get_id(),
+					$expected_cents
+				)
+			);
+
+			return new WP_Error(
+				'edge_amount_mismatch',
+				__( 'Your order total changed. Please reload the checkout and try again.', 'edge-gateway' )
+			);
+		}
+
+		$currency = isset( $attributes->amount_currency ) ? strtoupper( (string) $attributes->amount_currency ) : '';
+
+		if ( $currency !== strtoupper( $order->get_currency() ) ) {
+			return new WP_Error( 'edge_currency_mismatch', self::generic_failure() );
+		}
+
+		$attempt_key = (string) $order->get_meta( '_edge_attempt_key' );
+		$remote_key  = isset( $attributes->idempotency_key ) ? (string) $attributes->idempotency_key : '';
+
+		if ( '' !== $attempt_key && ! hash_equals( $attempt_key, $remote_key ) ) {
+			return new WP_Error( 'edge_attempt_mismatch', self::generic_failure() );
+		}
+
+		// The hosted form is what attaches a payment method, and only a confirmed
+		// one is chargeable. Without this the confirm would fail at Edge with a
+		// 422 listing the 3DS fields the iframe was supposed to supply.
+		if ( ! self::has_confirmed_payment_method( $demand ) ) {
+			return new WP_Error(
+				'edge_card_not_verified',
+				__( 'Your card has not been verified yet. Please complete the card form and try again.', 'edge-gateway' )
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether a chargeable payment method is attached.
+	 *
+	 * @param object $demand Demand document with `payment_method` included.
+	 * @return bool
+	 */
+	private static function has_confirmed_payment_method( $demand ) {
+		$related = isset( $demand->data->relationships->payment_method->data->id )
+			? (string) $demand->data->relationships->payment_method->data->id
+			: '';
+
+		if ( '' === $related ) {
+			return false;
+		}
+
+		foreach ( (array) ( isset( $demand->included ) ? $demand->included : array() ) as $resource ) {
+			if ( ! isset( $resource->type, $resource->id ) || 'payment_methods' !== $resource->type ) {
+				continue;
+			}
+
+			if ( (string) $resource->id !== $related ) {
+				continue;
+			}
+
+			return isset( $resource->attributes->external_state )
+				&& 'confirmed' === $resource->attributes->external_state;
+		}
+
+		// Related but not returned: treat as unverified rather than assuming.
+		return false;
+	}
+
+	/**
+	 * Confirm, resolving an ambiguous response rather than retrying blindly.
+	 *
+	 * A transport failure or a 5xx does not mean the confirm did not happen, so
+	 * the authoritative state is read back before deciding anything. Retrying a
+	 * confirm that already succeeded would be a second charge.
+	 *
+	 * @param string $demand_id Demand id.
+	 * @return string|WP_Error
+	 */
+	private static function do_confirm( $demand_id ) {
+		try {
+			\Edge\Client::confirm( 'payment_demands', $demand_id );
+
+			return $demand_id;
+		} catch ( \Edge\Exception $e ) {
+			$status = $e->getStatusCode();
+
+			if ( 422 === $status ) {
+				WC_Edge_Logger::error( 'Confirm rejected for ' . $demand_id . ': ' . $e->getMessage() );
+
+				return new WP_Error( 'edge_confirm_rejected', self::describe( $e ) );
+			}
+
+			// 0 is a transport failure; 405 means the state moved under us; 5xx
+			// may have applied. All three are ambiguous until we look.
+			if ( 0 === $status || 405 === $status || $status >= 500 ) {
+				return self::resolve_ambiguous_confirm( $demand_id );
+			}
+
+			WC_Edge_Logger::error( 'Confirm failed for ' . $demand_id . ' (HTTP ' . $status . ')' );
+
+			return new WP_Error( 'edge_confirm_failed', self::generic_failure() );
+		} catch ( \Throwable $e ) {
+			return self::resolve_ambiguous_confirm( $demand_id );
+		}
+	}
+
+	/**
+	 * Read the demand back and decide whether the confirm took effect.
+	 *
+	 * @param string $demand_id Demand id.
+	 * @return string|WP_Error
+	 */
+	private static function resolve_ambiguous_confirm( $demand_id ) {
+		$demand = self::fetch_demand( $demand_id );
+
+		if ( is_wp_error( $demand ) ) {
+			return new WP_Error( 'edge_confirm_unresolved', self::generic_failure() );
+		}
+
+		$state = isset( $demand->data->attributes->processor_state )
+			? (string) $demand->data->attributes->processor_state
+			: '';
+
+		WC_Edge_Logger::info( 'Resolving ambiguous confirm for ' . $demand_id . '; state is ' . $state );
+
+		// Already moving through the processor: the confirm landed.
+		if ( in_array( $state, array( 'pending', 'processing', 'succeeded' ), true ) ) {
+			return $demand_id;
+		}
+
+		// Still an unconfirmed intent, so nothing was applied. One retry only.
+		if ( in_array( $state, array( 'incomplete', 'ready' ), true ) ) {
+			try {
+				\Edge\Client::confirm( 'payment_demands', $demand_id );
+
+				return $demand_id;
+			} catch ( \Throwable $e ) {
+				WC_Edge_Logger::error( 'Confirm retry failed for ' . $demand_id . ': ' . $e->getMessage() );
+
+				return new WP_Error( 'edge_confirm_failed', self::generic_failure() );
+			}
+		}
+
+		if ( 'failed' === $state ) {
+			return new WP_Error(
+				'edge_payment_failed',
+				__( 'Your payment was declined. Please try another card.', 'edge-gateway' )
+			);
+		}
+
+		return new WP_Error( 'edge_confirm_unresolved', self::generic_failure() );
+	}
+
+	/**
 	 * Create whatever the attempt is still missing.
 	 *
 	 * Each id is persisted the moment it is known, so a retry after a lost
