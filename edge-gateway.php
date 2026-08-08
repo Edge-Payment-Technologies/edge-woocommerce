@@ -147,8 +147,19 @@ class WC_Edge_Payments {
 		require_once $path . 'class-wc-edge-logger.php';
 		require_once $path . 'class-wc-edge-payment-service.php';
 		require_once $path . 'class-wc-edge-rest-controller.php';
+		require_once $path . 'class-wc-edge-webhook-store.php';
+		require_once $path . 'class-wc-edge-webhook-controller.php';
+		require_once $path . 'class-wc-edge-subscription-reconciler.php';
 
 		add_action( 'rest_api_init', array( 'WC_Edge_REST_Controller', 'register' ) );
+		add_action( 'rest_api_init', array( 'WC_Edge_Webhook_Controller', 'register' ) );
+
+		// Housekeeping for both bounded tables.
+		add_action( 'wc_edge_daily_cleanup', array( __CLASS__, 'run_cleanup' ) );
+
+		if ( ! wp_next_scheduled( 'wc_edge_daily_cleanup' ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'wc_edge_daily_cleanup' );
+		}
 
 		// Bind the pre-order attempt to the order the moment one exists.
 		add_action( 'woocommerce_store_api_checkout_order_processed', array( __CLASS__, 'adopt_attempt' ), 10, 1 );
@@ -159,6 +170,7 @@ class WC_Edge_Payments {
 		// always fire, so the schema is checked here as well. The check is a
 		// single option read when the version already matches.
 		WC_Edge_Attempt_Store::maybe_install();
+		WC_Edge_Webhook_Store::maybe_install();
 
 		// Make the WC_Gateway_Edge class available.
 		if ( class_exists( 'WC_Payment_Gateway' ) ) {
@@ -218,6 +230,16 @@ class WC_Edge_Payments {
 		}
 
 		update_option( 'woocommerce_edge_settings', $settings );
+	}
+
+	/**
+	 * Trim both bounded tables.
+	 *
+	 * @return void
+	 */
+	public static function run_cleanup() {
+		WC_Edge_Attempt_Store::purge();
+		WC_Edge_Webhook_Store::purge();
 	}
 
 	/**

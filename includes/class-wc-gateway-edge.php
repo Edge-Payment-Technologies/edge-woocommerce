@@ -144,9 +144,52 @@ class WC_Gateway_Edge extends WC_Payment_Gateway {
 
 		if ( null !== $error ) {
 			WC_Admin_Settings::add_error( self::describe_key_error( $error ) );
+
+			return $saved;
 		}
 
+		self::sync_webhook_subscription();
+
 		return $saved;
+	}
+
+	/**
+	 * Register or refresh the webhook subscription for the saved credentials.
+	 *
+	 * Without a subscription no order can ever leave on-hold, so a failure here
+	 * is surfaced on the settings screen rather than discovered later by a
+	 * merchant wondering why nothing completes.
+	 *
+	 * @return void
+	 */
+	private static function sync_webhook_subscription() {
+		// Re-read the gateway so it reflects what was just saved.
+		$gateway = new self();
+
+		$result = WC_Edge_Subscription_Reconciler::reconcile( $gateway );
+
+		if ( ! is_wp_error( $result ) ) {
+			WC_Admin_Settings::add_message( __( 'Edge Payments: webhooks are registered.', 'edge-gateway' ) );
+
+			return;
+		}
+
+		if ( 'edge_callback_unreachable' === $result->get_error_code() ) {
+			// Expected on a local site; not a misconfiguration to shout about.
+			WC_Admin_Settings::add_message(
+				__( 'Edge Payments: settings saved. Webhooks were not registered because this site is not reachable from the internet, so orders will stay on hold until it is.', 'edge-gateway' )
+			);
+
+			return;
+		}
+
+		WC_Admin_Settings::add_error(
+			sprintf(
+				/* translators: %s: error detail. */
+				__( 'Edge Payments: webhooks could not be registered, so orders will not complete automatically. %s', 'edge-gateway' ),
+				$result->get_error_message()
+			)
+		);
 	}
 
 	/**
