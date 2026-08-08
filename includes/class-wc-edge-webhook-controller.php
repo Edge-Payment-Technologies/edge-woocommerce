@@ -40,8 +40,8 @@ final class WC_Edge_Webhook_Controller {
 			self::NAMESPACE_V1,
 			self::ROUTE,
 			array(
-				'methods'  => 'POST',
-				'callback' => array( __CLASS__, 'handle' ),
+				'methods'             => 'POST',
+				'callback'            => array( __CLASS__, 'handle' ),
 				// Authentication is the signature check inside the handler: this
 				// endpoint is called by Edge, which has no WordPress identity.
 				'permission_callback' => '__return_true',
@@ -120,6 +120,7 @@ final class WC_Edge_Webhook_Controller {
 		}
 
 		foreach ( WC_Edge_Subscription_Reconciler::secrets_by_mode() as $mode => $secret ) {
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- This is Edge's documented signature format, not obfuscation.
 			if ( hash_equals( base64_encode( sha1( $secret, true ) ), $signature ) ) {
 				return $mode;
 			}
@@ -165,6 +166,8 @@ final class WC_Edge_Webhook_Controller {
 	 * @param array  $event Normalised event.
 	 * @param string $mode  Trusted mode.
 	 * @return string Outcome label.
+	 * @throws RuntimeException When the gateway is unavailable, so the caller
+	 *                          releases the dedup claim and Edge can retry.
 	 */
 	private static function apply( array $event, $mode ) {
 		if ( 'transaction.payment_demands' !== $event['resource_type'] || '' === $event['resource_id'] ) {

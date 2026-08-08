@@ -76,7 +76,10 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType {
 			self::EDGE_JS_HANDLE,
 			WC_Edge_Client_Factory::browser_sdk_url(),
 			array(),
-			null, // Version is Edge's to manage; a query string would bust their cache.
+			// Edge serves this from a CDN and manages its own cache headers.
+			// Appending our plugin version would key their cache to our release
+			// cycle, which has nothing to do with when the SDK actually changes.
+			null, // phpcs:ignore WordPress.WP.EnqueuedResourceParameters.MissingVersion -- Third-party CDN asset; Edge owns its versioning.
 			true
 		);
 
@@ -128,12 +131,12 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType {
 		}
 
 		return array(
-			'title'           => $this->get_setting( 'title' ),
-			'description'     => $this->build_description(),
-			'mode'            => WC_Edge_Mode::mode_of( $publishable_key ),
-			'publishableKey'  => $publishable_key,
-			'iframeHost'      => WC_Edge_Client_Factory::dashboard_host(),
-			'supports'        => $this->gateway instanceof WC_Gateway_Edge
+			'title'          => $this->get_setting( 'title' ),
+			'description'    => $this->build_description(),
+			'mode'           => WC_Edge_Mode::mode_of( $publishable_key ),
+			'publishableKey' => $publishable_key,
+			'iframeHost'     => WC_Edge_Client_Factory::dashboard_host(),
+			'supports'       => $this->gateway instanceof WC_Gateway_Edge
 				? array_filter( $this->gateway->supports, array( $this->gateway, 'supports' ) )
 				: array(),
 		);

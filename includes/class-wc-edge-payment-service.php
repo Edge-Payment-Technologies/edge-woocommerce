@@ -219,7 +219,7 @@ final class WC_Edge_Payment_Service {
 
 		$currency = isset( $attributes->amount_currency ) ? strtoupper( (string) $attributes->amount_currency ) : '';
 
-		if ( $currency !== strtoupper( $order->get_currency() ) ) {
+		if ( strtoupper( $order->get_currency() ) !== $currency ) {
 			return new WP_Error( 'edge_currency_mismatch', self::generic_failure() );
 		}
 
@@ -636,29 +636,29 @@ final class WC_Edge_Payment_Service {
 
 		return array(
 			// Fingerprint inputs.
-			'cart_hash'           => WC()->cart->get_cart_hash(),
-			'amount_cents'        => $amount_cents,
-			'currency'            => $currency,
-			'mode'                => (string) $gateway->get_mode(),
-			'publishable_key'     => $gateway->get_publishable_key(),
-			'billing_first_name'  => $customer->get_billing_first_name(),
-			'billing_last_name'   => $customer->get_billing_last_name(),
-			'billing_email'       => $email,
-			'billing_phone'       => $customer->get_billing_phone(),
-			'billing_address_1'   => $billing['address_1'],
-			'billing_address_2'   => $billing['address_2'],
-			'billing_city'        => $billing['city'],
-			'billing_state'       => $billing['state'],
-			'billing_postcode'    => $billing['postcode'],
-			'billing_country'     => $billing['country'],
-			'shipping_first_name' => $customer->get_shipping_first_name(),
-			'shipping_last_name'  => $customer->get_shipping_last_name(),
-			'shipping_address_1'  => $shipping['address_1'],
-			'shipping_address_2'  => $shipping['address_2'],
-			'shipping_city'       => $shipping['city'],
-			'shipping_state'      => $shipping['state'],
-			'shipping_postcode'   => $shipping['postcode'],
-			'shipping_country'    => $shipping['country'],
+			'cart_hash'             => WC()->cart->get_cart_hash(),
+			'amount_cents'          => $amount_cents,
+			'currency'              => $currency,
+			'mode'                  => (string) $gateway->get_mode(),
+			'publishable_key'       => $gateway->get_publishable_key(),
+			'billing_first_name'    => $customer->get_billing_first_name(),
+			'billing_last_name'     => $customer->get_billing_last_name(),
+			'billing_email'         => $email,
+			'billing_phone'         => $customer->get_billing_phone(),
+			'billing_address_1'     => $billing['address_1'],
+			'billing_address_2'     => $billing['address_2'],
+			'billing_city'          => $billing['city'],
+			'billing_state'         => $billing['state'],
+			'billing_postcode'      => $billing['postcode'],
+			'billing_country'       => $billing['country'],
+			'shipping_first_name'   => $customer->get_shipping_first_name(),
+			'shipping_last_name'    => $customer->get_shipping_last_name(),
+			'shipping_address_1'    => $shipping['address_1'],
+			'shipping_address_2'    => $shipping['address_2'],
+			'shipping_city'         => $shipping['city'],
+			'shipping_state'        => $shipping['state'],
+			'shipping_postcode'     => $shipping['postcode'],
+			'shipping_country'      => $shipping['country'],
 
 			// Working values.
 			'session_key'           => (string) WC()->session->get_customer_id(),

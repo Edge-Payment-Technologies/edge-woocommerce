@@ -1,66 +1,39 @@
 <?xml version="1.0"?>
-<ruleset name="SomewhereWarm-cs">
-	<description>SomewhereWarm Coding Standards</description>
+<ruleset name="Edge WooCommerce Gateway">
+	<description>Coding standards for the Edge Payments gateway.</description>
 
-	<!-- Exclude paths -->
-	<exclude-pattern>tests/</exclude-pattern>
+	<file>edge-gateway.php</file>
+	<file>includes</file>
+
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
-	<exclude-pattern>*/assets/*</exclude-pattern>
 	<exclude-pattern>*/vendor/*</exclude-pattern>
+	<exclude-pattern>*/assets/*</exclude-pattern>
 
-	<!-- Configs -->
-	<config name="minimum_supported_wp_version" value="4.7" />
-	<config name="testVersion" value="5.6-" />
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="ps"/>
 
-	<!-- Rules -->
-	<rule ref="WooCommerce-Core">
-		<exclude name="Core.Commenting.CommentTags.AuthorTag" />
-		<exclude name="WordPress.PHP.DontExtract" />
-	</rule>
+	<!--
+		Targets match the plugin header: WooCommerce 11 requires PHP 7.4 and
+		WordPress 6.9, so those are the floors this code has to hold to. The
+		previous values here were PHP 5.6 and WordPress 4.7.
+	-->
+	<config name="minimum_supported_wp_version" value="6.9"/>
+	<config name="testVersion" value="7.4-"/>
+
+	<rule ref="PHPCompatibilityWP"/>
 
 	<rule ref="WordPress-Extra">
-		<exclude name="Generic.Commenting.DocComment.SpacingAfter" />
-		<exclude name="Generic.Files.LineEndings.InvalidEOLChar" />
-		<exclude name="Generic.Functions.FunctionCallArgumentSpacing.SpaceBeforeComma" />
-		<exclude name="Generic.WhiteSpace" />
-		<exclude name="PEAR.Functions.FunctionCallSignature" />
-		<exclude name="Squiz.Commenting" />
-		<exclude name="Squiz.PHP.DisallowSizeFunctionsInLoops.Found" />
-		<exclude name="Squiz.WhiteSpace" />
-		<exclude name="WordPress.Arrays" />
-		<exclude name="WordPress.Files.FileName" />
-		<exclude name="WordPress.NamingConventions" />
-		<exclude name="WordPress.Security.ValidatedSanitizedInput.MissingUnslash" />
-		<exclude name="WordPress.WP.I18n.NonSingularStringLiteralText" />
-		<exclude name="WordPress.WhiteSpace" />
-		<exclude name="WordPress.Security.EscapeOutput" />
-		<exclude name="Squiz.PHP.EmbeddedPhp" />
+		<!-- WooCommerce dictates these class and file names, not us. -->
+		<exclude name="WordPress.Files.FileName"/>
+		<exclude name="WordPress.NamingConventions.ValidVariableName"/>
 	</rule>
 
-	<rule ref="PHPCompatibility">
-		<exclude-pattern>tests/</exclude-pattern>
-	</rule>
+	<rule ref="WordPress-Docs"/>
 
-	<rule ref="WordPress.Security.EscapeOutput">
+	<rule ref="WordPress.WP.I18n">
 		<properties>
-			<!-- e.g. body_class, the_content, the_excerpt -->
-			<property name="customAutoEscapedFunctions" type="array" value="0=>woocommerce_wp_select,1=>wcs_help_tip,2=>admin_url,3=>wc_price"/>
-			<!-- e.g. esc_attr, esc_html, esc_url-->
-			<property name="customEscapingFunctions" type="array" value="0=>wcs_json_encode,1=>htmlspecialchars,2=>wp_kses_allow_underscores"/>
-			<!-- e.g. _deprecated_argument, printf, _e-->
-			<property name="customPrintingFunctions" type="array" value=""/>
+			<property name="text_domain" type="array" value="edge-gateway"/>
 		</properties>
 	</rule>
-
-	    <!-- base rules are PSR-12 -->
-    <rule ref="PSR12" >
-        <!-- Current exclusions -->
-        <exclude name="Generic.Files.LineLength.TooLong" />
-        <exclude name="PSR1.Classes.ClassDeclaration.MissingNamespace" />
-        <exclude name="PSR1.Files.SideEffects.FoundWithSymbols" />
-        <exclude name="PSR1.Methods.CamelCapsMethodName.NotCamelCaps" />
-        <exclude name="PSR2.Methods.MethodDeclaration.Underscore" />
-        <exclude name="Squiz.Classes.ValidClassName.NotCamelCaps" />
-    </rule>
-
 </ruleset>

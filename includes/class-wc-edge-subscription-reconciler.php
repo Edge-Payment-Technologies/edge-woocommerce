@@ -142,7 +142,7 @@ final class WC_Edge_Subscription_Reconciler {
 			// Prefer the subscription we already know about. Fetching it by id is
 			// both more direct than searching by URL and immune to the index
 			// endpoint, which currently returns 500.
-			$existing = self::fetch_known( $mode, $callback );
+			$existing = self::fetch_known( $mode );
 
 			// Only fall back to searching when we have nothing recorded - after a
 			// reinstall, say. Treated as best effort so a broken index does not
@@ -220,11 +220,10 @@ final class WC_Edge_Subscription_Reconciler {
 	 * when its URL has moved on - in each case the caller should search or
 	 * create rather than adopt something that is no longer ours.
 	 *
-	 * @param string $mode     Mode.
-	 * @param string $callback Expected callback URL.
+	 * @param string $mode Mode.
 	 * @return object|null
 	 */
-	private static function fetch_known( $mode, $callback ) {
+	private static function fetch_known( $mode ) {
 		$stored = self::stored();
 
 		if ( empty( $stored[ $mode ]['id'] ) ) {
@@ -383,9 +382,9 @@ final class WC_Edge_Subscription_Reconciler {
 		$stored = self::stored();
 
 		$stored[ $mode ] = array(
-			'id'       => $id,
-			'secret'   => $secret,
-			'url'      => $callback,
+			'id'        => $id,
+			'secret'    => $secret,
+			'url'       => $callback,
 			'synced_at' => current_time( 'mysql', true ),
 		);
 

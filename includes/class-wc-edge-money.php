@@ -71,8 +71,17 @@ final class WC_Edge_Money {
 		}
 
 		if ( ! preg_match( '/^(?<sign>[+-])?(?<whole>\d+)(?:\.(?<frac>\d+))?$/', $value, $matches ) ) {
+			// The value is echoed back for diagnosis only. This exception is
+			// caught at every call site and replaced with generic shopper-facing
+			// copy, so it is never rendered; and this class stays free of
+			// WordPress so it can be unit tested without loading it, which rules
+			// out esc_html() here.
 			throw new InvalidArgumentException(
-				sprintf( 'Edge money conversion received a malformed decimal: "%s".', $value )
+				sprintf(
+					'Edge money conversion received a malformed decimal: "%s".',
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- Diagnostic only; never rendered, and this class must not depend on WordPress.
+					$value
+				)
 			);
 		}
 
@@ -102,9 +111,9 @@ final class WC_Edge_Money {
 			return array( $whole, (int) str_pad( $fraction, 2, '0', STR_PAD_RIGHT ) );
 		}
 
-		$cents     = (int) substr( $fraction, 0, 2 );
-		$next      = (int) $fraction[2];
-		$round_up  = $next >= 5;
+		$cents    = (int) substr( $fraction, 0, 2 );
+		$next     = (int) $fraction[2];
+		$round_up = $next >= 5;
 
 		if ( $round_up ) {
 			++$cents;
