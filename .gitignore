@@ -18,6 +18,12 @@ package-lock.json
 /vendor/
 composer.lock
 
+# Local-only Composer override: points edge-php-sdk at a working copy on disk.
+# Never commit - it contains an absolute path and would break release builds,
+# which must resolve the tagged SDK.
+composer-local.json
+composer-local.lock
+
 # Sass
 .sass-cache/
 
@@ -43,3 +49,10 @@ Thumbs.db
 select2.scss
 /assets/
 /languages/
+
+# PHPUnit
+.phpunit.result.cache
+
+# Release build output
+/dist/
+bin/php-scoper.phar
