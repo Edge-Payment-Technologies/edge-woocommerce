@@ -14,6 +14,6 @@
     }
   },
   "require": {
-    "edge-payment-technologies/edge-php-sdk": "dev-main"
+    "edge-payment-technologies/edge-php-sdk": "^1.0"
   }
 }

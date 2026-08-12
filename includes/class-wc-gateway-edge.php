@@ -139,7 +139,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		\Edge\Auth::setApiKey($this->get_option('test_private_key'));
 
 		try {
-			//Check if a customer with this email already exists
+			//Fetch all customers with this email
 			$getCustomer = \Edge\Client::get('customers', [
 				'filter' =>
 					['email' => $order->get_billing_email()]
@@ -189,7 +189,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			throw new Exception(self::getEdgeErrorMessage($e));
 		}
 
-		//Next add the billing address
+		//Next add the shipping address
 		$edgeShippingAddress = [
 			'line_1' => $order->get_shipping_address_1(),
 			'line_2' => $order->get_shipping_address_2(),
@@ -211,7 +211,6 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		$expiry_year = (int) 20 . $_POST['year'];
 
 		$edgePaymentMethod = [
-			'name' => (string) $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
 			'card_pan_token' => (string) $_POST['number'],
 			'card_cvv_token' => (string) $_POST['cvc'],
 			'expiry_year' => (int) $expiry_year,
@@ -253,10 +252,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			'amount_cents' => (float) $order->get_total() * 100,
 			'captured' => true,
 			'currency' => $order->get_currency(),
-			'description' => 'WooCommerce Order #' . $order_id
+			'description' => 'WooCommerce Order #' . $order_id,
+			'idempotency_key' => "",
+			'purchase_identifier' => $order_id
 		];
-
-
 
 		$relationships = [
 			'customer' => [

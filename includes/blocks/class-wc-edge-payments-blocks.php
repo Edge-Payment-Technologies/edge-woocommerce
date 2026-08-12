@@ -87,7 +87,7 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType
 		$description = $this->get_setting('description');
 		if ($this->get_setting('description')) {
 			if ($this->get_setting('testmode') != "no") {
-				$description .= ' TEST MODE ENABLED. Use 4242 4242 4242 4242.';
+				$description .= ' TEST MODE ENABLED. ';
 				$description = trim($description);
 			}
 			// display the description with <p> tags etc.
