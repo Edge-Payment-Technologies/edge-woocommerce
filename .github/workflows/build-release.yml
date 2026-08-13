@@ -27,7 +27,9 @@ jobs:
           key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
             ${{ runner.os }}-php-
-      - name: Generate zip
-        uses: 10up/action-wordpress-plugin-build-zip@1.0.2
-        env:
-          SLUG: edge-woocommerce # optional, remove if GitHub repo name matches SVN slug, including capitalization
+      - name: Generating zip
+        uses: rudlinkon/action-wordpress-build-zip@1.5.0
+        with:
+          install-composer: true
+          node-version: 26.1.0
+          npm-run-build: true
