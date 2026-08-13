@@ -10,19 +10,23 @@ on:
       - ".github/workflows/*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: true
       - name: Install action-validator with asdf
-        uses: asdf-vm/actions/install@v3
+        uses: asdf-vm/actions/install@v4.0.1
         with:
+          asdf_branch: v0.15.0
           tool_versions: |
-            action-validator 0.5.4
+            action-validator 0.6.0
       - name: Lint Actions
         continue-on-error: true
         id: validator
@@ -35,11 +39,12 @@ jobs:
           echo "$ISSUES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
       - name: Comment workflow validator results
-        uses: thollander/actions-comment-pull-request@v2
-        if:  ${{ (github.ref != 'refs/heads/main') }}
+        uses: thollander/actions-comment-pull-request@v3.0.1
+        if: ${{ (github.ref != 'refs/heads/main') && steps.validator.outputs.issues }}
         with:
           message: |
+            Github Action Validator found these issues:
             ```
             ${{ steps.validator.outputs.issues }}
             ```
-          comment_tag: validator
+          comment-tag: validator
