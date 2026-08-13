@@ -3,15 +3,14 @@ import { __ } from '@wordpress/i18n';
 import { registerPaymentMethod } from '@woocommerce/blocks-registry';
 import { decodeEntities } from '@wordpress/html-entities';
 import { getSetting } from '@woocommerce/settings';
-import { useEffect } from '@wordpress/element';
-import { React, useState } from 'react';
+import { createElement, Fragment, useEffect } from '@wordpress/element';
 
 
 const settings = getSetting('edge_data', {});
 
 const defaultLabel = __(
   'Edge Payments',
-  'woo-gutenberg-products-block'
+  'edge-gateway'
 );
 
 const label = decodeEntities(settings.title) || defaultLabel;
@@ -27,8 +26,6 @@ var edgeCardData = {
  * Custom form field component
  */
 const LoadEdgePaymentsForm = () => {
-  const [value, setValue] = useState('');
-
   useEffect(() => {
     // Load the remote script here
     const script = document.createElement('script');
@@ -43,9 +40,7 @@ const LoadEdgePaymentsForm = () => {
   }, []); // Empty dependency array ensures it only runs once during component mount
 
 
-  return (
-    <div id="card-fields"></div>
-  );
+  return createElement('div', { id: 'card-fields' });
 };
 
 
@@ -125,11 +120,13 @@ const Content = (props) => {
     onPaymentSetup,
   ]);
 
-  return (
-    <>
-      <div dangerouslySetInnerHTML={{ __html: settings.description }} />
-      <LoadEdgePaymentsForm />
-    </>
+  return createElement(
+    Fragment,
+    null,
+    createElement('div', {
+      dangerouslySetInnerHTML: { __html: settings.description },
+    }),
+    createElement(LoadEdgePaymentsForm)
   );
 };
 /**
@@ -139,7 +136,7 @@ const Content = (props) => {
  */
 const Label = (props) => {
   const { PaymentMethodLabel } = props.components;
-  return <PaymentMethodLabel text={label} />;
+  return createElement(PaymentMethodLabel, { text: label });
 };
 
 
@@ -148,10 +145,11 @@ const Label = (props) => {
  * Edge payment method config object.
  */
 const WCEdge = {
+  name: "edge",
   name: "Edge",
-  label: <Label />,
-  content: <Content />,
-  edit: <Content />,
+  label: createElement(Label),
+  content: createElement(Content),
+  edit: createElement(Content),
   canMakePayment: () => true,
   ariaLabel: label,
   supports: {
@@ -163,28 +161,3 @@ const WCEdge = {
 
 
 registerPaymentMethod(WCEdge);
-
-const EventLogger = () => {
-  useEffect(() => {
-    // Get all event names from the window object
-    const eventNames = Object.keys(window);
-
-    // Log every event to the console
-    eventNames.forEach(eventName => {
-      window.addEventListener(eventName, event => {
-        console.log(`Event: ${eventName}`, event);
-      });
-    });
-
-    // Clean up event listeners when the component unmounts
-    return () => {
-      eventNames.forEach(eventName => {
-        window.removeEventListener(eventName);
-      });
-    };
-  }, []); // Empty dependency array ensures the effect runs only once on mount
-
-  return null; // or your component JSX
-};
-
-export default EventLogger;
