@@ -32,7 +32,7 @@ const LoadEdgePaymentsForm = () => {
   useEffect(() => {
     // Load the remote script here
     const script = document.createElement('script');
-    script.src = 'https://assets.tryedge.com/assets/edge-a05367bf1a6ff58a0349a85462352e392f28e68664bb817062701c801cd4b0c7.js';
+    script.src = 'https://assets.tryedge.io/assets/js/edge-0082aa6231d2034eb9d5c489d74c41bb.js?vsn=d';
     //script.async = true;
     script.onload = ActivateEdgePayments;
     document.body.appendChild(script);
@@ -148,7 +148,7 @@ const Label = (props) => {
  * Edge payment method config object.
  */
 const WCEdge = {
-  name: "edge",
+  name: "Edge",
   label: <Label />,
   content: <Content />,
   edit: <Content />,
@@ -157,6 +157,8 @@ const WCEdge = {
   supports: {
     features: settings.supports,
   },
+  currencies: ['USD'],
+  supportsRecurring: true,
 };
 
 
