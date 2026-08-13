@@ -25,7 +25,3 @@ updates:
     directory: "/.github/workflows/" # Location of package manifests
     schedule:
       interval: "daily"
-    cooldown:
-      semver-patch-days: 1
-      semver-minor-days: 9
-      semver-major-days: 30
