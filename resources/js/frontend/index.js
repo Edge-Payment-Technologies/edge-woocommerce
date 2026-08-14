@@ -16,7 +16,7 @@ const defaultLabel = __(
 const label = decodeEntities(settings.title) || defaultLabel;
 
 let edgeClient;
-let edgePaymentId = '';
+let edgePaymentDemandId = '';
 let edgePaymentMethodReady = false;
 
 /**
@@ -42,24 +42,24 @@ const LoadEdgePaymentsForm = () => {
 
 
 const ActivateEdgePayments = async () => {
-  const response = await fetch(settings.payment_intent_url, {
+  const response = await fetch(settings.payment_demand_url, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
-      action: 'edge_create_payment_intent',
-      nonce: settings.payment_intent_nonce,
+      action: 'edge_create_payment_demand',
+      nonce: settings.payment_demand_nonce,
     }),
   });
   const result = await response.json();
 
-  if (!response.ok || !result.success || !result.data?.payment_id) {
+  if (!response.ok || !result.success || !result.data?.payment_demand_id) {
     throw new Error(result.data?.message || 'Unable to initialize Edge Payments.');
   }
 
-  edgePaymentId = result.data.payment_id;
+  edgePaymentDemandId = result.data.payment_demand_id;
   edgeClient = new Edge(settings.publishable_key, {
     formFactor: 'inputs',
   });
@@ -68,22 +68,22 @@ const ActivateEdgePayments = async () => {
     edgePaymentMethodReady = Boolean(event.detail?.ready);
   });
 
-  const paymentIframe = edgeClient.mountPaymentForm('card-fields', edgePaymentId);
+  const paymentIframe = edgeClient.mountPaymentForm('card-fields', edgePaymentDemandId);
   paymentIframe.style.border = '0';
   paymentIframe.style.boxShadow = 'none';
 };
 
-const PrepareEdgePaymentIntent = async (billingAddress, shippingAddress) => {
-  const response = await fetch(settings.payment_intent_url, {
+const PrepareEdgePaymentDemand = async (billingAddress, shippingAddress) => {
+  const response = await fetch(settings.payment_demand_url, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
-      action: 'edge_prepare_payment_intent',
-      nonce: settings.payment_intent_nonce,
-      payment_id: edgePaymentId,
+      action: 'edge_prepare_payment_demand',
+      nonce: settings.payment_demand_nonce,
+      payment_demand_id: edgePaymentDemandId,
       billing_address: JSON.stringify(billingAddress),
       shipping_address: JSON.stringify(shippingAddress),
     }),
@@ -106,9 +106,9 @@ const Content = (props) => {
 
   useEffect(() => {
     const unsubscribe = onPaymentSetup(async () => {
-      if (edgeClient && edgePaymentId && edgePaymentMethodReady) {
+      if (edgeClient && edgePaymentDemandId && edgePaymentMethodReady) {
         try {
-          await PrepareEdgePaymentIntent(
+          await PrepareEdgePaymentDemand(
             billingAddress,
             shippingAddress
           );
@@ -124,7 +124,7 @@ const Content = (props) => {
           type: emitResponse.responseTypes.SUCCESS,
           meta: {
             paymentMethodData: {
-              payment_id: edgePaymentId,
+              payment_demand_id: edgePaymentDemandId,
             },
           },
         };

@@ -62,10 +62,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		// Actions.
 		add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
 		add_action('woocommerce_scheduled_subscription_payment_edge', array($this, 'process_subscription_payment'), 10, 2);
-		add_action('wp_ajax_edge_create_payment_intent', array($this, 'create_payment_intent'));
-		add_action('wp_ajax_nopriv_edge_create_payment_intent', array($this, 'create_payment_intent'));
-		add_action('wp_ajax_edge_prepare_payment_intent', array($this, 'prepare_payment_intent'));
-		add_action('wp_ajax_nopriv_edge_prepare_payment_intent', array($this, 'prepare_payment_intent'));
+		add_action('wp_ajax_edge_create_payment_demand', array($this, 'create_payment_demand'));
+		add_action('wp_ajax_nopriv_edge_create_payment_demand', array($this, 'create_payment_demand'));
+		add_action('wp_ajax_edge_prepare_payment_demand', array($this, 'prepare_payment_demand'));
+		add_action('wp_ajax_nopriv_edge_prepare_payment_demand', array($this, 'prepare_payment_demand'));
 	}
 
 	/**
@@ -132,11 +132,11 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 	}
 
 	/**
-	 * Create the unconfirmed payment intent required by Edge JS.
+	 * Create the unconfirmed payment demand required by Edge JS.
 	 */
-	public function create_payment_intent()
+	public function create_payment_demand()
 	{
-		check_ajax_referer('edge_create_payment_intent', 'nonce');
+		check_ajax_referer('edge_create_payment_demand', 'nonce');
 
 		if (!$this->is_available() || !WC()->cart || WC()->cart->is_empty()) {
 			wp_send_json_error(
@@ -146,20 +146,20 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		}
 
 		$cart_hash = WC()->cart->get_cart_hash();
-		$stored_intent = WC()->session->get('edge_payment_intent');
+		$stored_demand = WC()->session->get('edge_payment_demand');
 
 		if (
-			is_array($stored_intent) &&
-			isset($stored_intent['cart_hash'], $stored_intent['payment_id']) &&
-			$stored_intent['cart_hash'] === $cart_hash
+			is_array($stored_demand) &&
+			isset($stored_demand['cart_hash'], $stored_demand['payment_demand_id']) &&
+			$stored_demand['cart_hash'] === $cart_hash
 		) {
-			wp_send_json_success(array('payment_id' => $stored_intent['payment_id']));
+			wp_send_json_success(array('payment_demand_id' => $stored_demand['payment_demand_id']));
 		}
 
 		\Edge\Auth::setApiKey($this->private_key);
 
 		try {
-			$intent = \Edge\Client::create(
+			$demand = \Edge\Client::create(
 				'payment_demands',
 				array(
 					'data' => array(
@@ -175,7 +175,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			);
 		} catch (Exception $e) {
 			wc_get_logger()->error(
-				'Unable to create an Edge payment intent: ' . $this->getEdgeErrorMessage($e),
+				'Unable to create an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
 				array('source' => 'edge-woocommerce')
 			);
 
@@ -185,9 +185,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			);
 		}
 
-		$payment_id = isset($intent->data->id) ? sanitize_text_field($intent->data->id) : '';
+		$payment_demand_id = isset($demand->data->id) ? sanitize_text_field($demand->data->id) : '';
 
-		if (!$payment_id) {
+		if (!$payment_demand_id) {
 			wp_send_json_error(
 				array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
 				502
@@ -195,34 +195,34 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		}
 
 		WC()->session->set(
-			'edge_payment_intent',
+			'edge_payment_demand',
 			array(
 				'cart_hash' => $cart_hash,
-				'payment_id' => $payment_id,
+				'payment_demand_id' => $payment_demand_id,
 			)
 		);
 
-		wp_send_json_success(array('payment_id' => $payment_id));
+		wp_send_json_success(array('payment_demand_id' => $payment_demand_id));
 	}
 
 	/**
 	 * Attach checkout customer and address relationships before Edge verifies the card.
 	 */
-	public function prepare_payment_intent()
+	public function prepare_payment_demand()
 	{
-		check_ajax_referer('edge_create_payment_intent', 'nonce');
+		check_ajax_referer('edge_create_payment_demand', 'nonce');
 
-		$payment_id = isset($_POST['payment_id'])
-			? sanitize_text_field(wp_unslash($_POST['payment_id']))
+		$payment_demand_id = isset($_POST['payment_demand_id'])
+			? sanitize_text_field(wp_unslash($_POST['payment_demand_id']))
 			: '';
-		$stored_intent = WC()->session->get('edge_payment_intent');
+		$stored_demand = WC()->session->get('edge_payment_demand');
 
 		if (
-			!$payment_id ||
-			!wp_is_uuid($payment_id) ||
-			!is_array($stored_intent) ||
-			!isset($stored_intent['payment_id']) ||
-			!hash_equals((string) $stored_intent['payment_id'], $payment_id)
+			!$payment_demand_id ||
+			!wp_is_uuid($payment_demand_id) ||
+			!is_array($stored_demand) ||
+			!isset($stored_demand['payment_demand_id']) ||
+			!hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
 		) {
 			wp_send_json_error(array('message' => __('Invalid Edge payment reference.', 'edge-gateway')), 400);
 		}
@@ -244,9 +244,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		$checkout_hash = hash('sha256', wp_json_encode(array($billing, $shipping)));
 
 		if (
-			isset($stored_intent['checkout_hash']) &&
-			$stored_intent['checkout_hash'] === $checkout_hash &&
-			!empty($stored_intent['relationships'])
+			isset($stored_demand['checkout_hash']) &&
+			$stored_demand['checkout_hash'] === $checkout_hash &&
+			!empty($stored_demand['relationships'])
 		) {
 			wp_send_json_success();
 		}
@@ -257,10 +257,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			$relationships = $this->create_checkout_relationships($billing, $shipping);
 
 			\Edge\Client::update(
-				'payment_demands/' . rawurlencode($payment_id),
+				'payment_demands/' . rawurlencode($payment_demand_id),
 				array(
 					'data' => array(
-						'id' => $payment_id,
+						'id' => $payment_demand_id,
 						'type' => 'payment_demands',
 						'relationships' => $relationships,
 					),
@@ -268,7 +268,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			);
 		} catch (Exception $e) {
 			wc_get_logger()->error(
-				'Unable to prepare an Edge payment intent: ' . $this->getEdgeErrorMessage($e),
+				'Unable to prepare an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
 				array('source' => 'edge-woocommerce')
 			);
 
@@ -278,9 +278,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			);
 		}
 
-		$stored_intent['relationships'] = $relationships;
-		$stored_intent['checkout_hash'] = $checkout_hash;
-		WC()->session->set('edge_payment_intent', $stored_intent);
+		$stored_demand['relationships'] = $relationships;
+		$stored_demand['checkout_hash'] = $checkout_hash;
+		WC()->session->set('edge_payment_demand', $stored_demand);
 
 		wp_send_json_success();
 	}
@@ -367,18 +367,18 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 	public function process_payment($order_id)
 	{
 		$order = wc_get_order($order_id);
-		$payment_id = isset($_POST['payment_id'])
-			? sanitize_text_field(wp_unslash($_POST['payment_id']))
+		$payment_demand_id = isset($_POST['payment_demand_id'])
+			? sanitize_text_field(wp_unslash($_POST['payment_demand_id']))
 			: '';
-		$stored_intent = WC()->session->get('edge_payment_intent');
+		$stored_demand = WC()->session->get('edge_payment_demand');
 
 		if (
-			!$payment_id ||
-			!wp_is_uuid($payment_id) ||
-			!is_array($stored_intent) ||
-			!isset($stored_intent['payment_id']) ||
-			empty($stored_intent['relationships']) ||
-			!hash_equals((string) $stored_intent['payment_id'], $payment_id)
+			!$payment_demand_id ||
+			!wp_is_uuid($payment_demand_id) ||
+			!is_array($stored_demand) ||
+			!isset($stored_demand['payment_demand_id']) ||
+			empty($stored_demand['relationships']) ||
+			!hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
 		) {
 			throw new Exception(__('Invalid Edge payment reference.', 'edge-gateway'));
 		}
@@ -387,10 +387,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 		try {
 			Edge\Client::update(
-				'payment_demands/' . rawurlencode($payment_id),
+				'payment_demands/' . rawurlencode($payment_demand_id),
 				array(
 					'data' => array(
-						'id' => $payment_id,
+						'id' => $payment_demand_id,
 						'type' => 'payment_demands',
 						'attributes' => array(
 							'amount_cents' => (int) round((float) $order->get_total() * 100),
@@ -401,7 +401,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 					),
 				)
 			);
-			Edge\Client::confirm('payment_demands', $payment_id);
+			Edge\Client::confirm('payment_demands', $payment_demand_id);
 		} catch (Exception $e) {
 			throw new Exception($this->getEdgeErrorMessage($e));
 		}
@@ -409,7 +409,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		$payment_result = "pending";
 
 		for ($i = 0; $i < 5; $i++) {
-			$response = Edge\Client::get('payment_demands/' . rawurlencode($payment_id));
+			$response = Edge\Client::get('payment_demands/' . rawurlencode($payment_demand_id));
 			if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
 				$payment_result = $response->data->attributes->processor_state;
 				break;
@@ -417,12 +417,12 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			sleep(2);
 		}
 
-		$order->set_transaction_id($payment_id);
+		$order->set_transaction_id($payment_demand_id);
 
 		if ('succeeded' === $payment_result) {
 			$order->payment_complete();
 			WC()->cart->empty_cart();
-			WC()->session->__unset('edge_payment_intent');
+			WC()->session->__unset('edge_payment_demand');
 
 			return array(
 				'result' => 'success',

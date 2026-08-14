@@ -99,8 +99,8 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType
 			'description' => $description,
 			'testmode' => $this->get_setting('testmode'),
 			'publishable_key' => ($this->get_setting('testmode') != "no") ? $this->get_setting('test_publishable_key') : $this->get_setting('publishable_key'),
-			'payment_intent_url' => admin_url('admin-ajax.php'),
-			'payment_intent_nonce' => wp_create_nonce('edge_create_payment_intent'),
+			'payment_demand_url' => admin_url('admin-ajax.php'),
+			'payment_demand_nonce' => wp_create_nonce('edge_create_payment_demand'),
 			'supports' => array_filter($this->gateway->supports, [$this->gateway, 'supports'])
 		];
 	}
