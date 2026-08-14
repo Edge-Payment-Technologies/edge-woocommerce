@@ -7,39 +7,63 @@ project.properties
 .settings*
 sftp-config.json
 .idea
+.vscode/
+.cursor/
 ._*
+*.swp
+*~
 
-# Grunt
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Node
 /node_modules/
 /deploy/
 package-lock.json
+npm-debug.log*
+yarn-error.log
+yarn.lock
 
 # Composer
 /vendor/
 composer.lock
 
+# Downloaded PHP tools
+*.phar
+
+# PHP caches and reports
+.phpunit.result.cache
+.phpunit.cache/
+/tests/coverage/
+/tests/_output/*
+!/tests/_output/.gitkeep
+.phpcs-cache
+.phpcs.cache
+.phpstan.cache
+
 # Sass
 .sass-cache/
 
-# OS X metadata
-.DS_Store
-
-# Windows junk
-Thumbs.db
+# Logs and temp
+/logs
+*.log
+/tmp
 
 # ApiGen
 /wc-apidocs/
 
-# Tests (Unit and E2E)
-/tmp
-/tests/coverage/
-/tests/_output/*
-!/tests/_output/.gitkeep
+# WP-CLI local config
+wp-cli.local.yml
 
-# Logs
-/logs
-
-# Build assets.
+# Build assets
 select2.scss
 /assets/
 /languages/
