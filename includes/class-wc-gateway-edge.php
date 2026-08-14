@@ -125,9 +125,17 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 	public function getEdgeErrorMessage(Exception $e)
 	{
+		if ($e instanceof \Edge\Exception) {
+			$message = sanitize_text_field($e->getMessage());
+
+			return $message
+				? $message
+				: __('Edge Payments could not process the request.', 'edge-gateway');
+		}
+
 		$decoded = json_decode($e->getMessage(), true);
-		return isset($decoded['errors'][0]['detail'])
-			? $decoded['errors'][0]['detail']
+		return isset($decoded['errors'][0]['detail']) && is_string($decoded['errors'][0]['detail'])
+			? sanitize_text_field($decoded['errors'][0]['detail'])
 			: __('Edge Payments could not process the request.', 'edge-gateway');
 	}
 
@@ -396,25 +404,47 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 							'amount_cents' => (int) round((float) $order->get_total() * 100),
 							'amount_currency' => $order->get_currency(),
 							'description' => 'WooCommerce Order #' . $order_id,
-							'purchase_identifier' => (string) $order_id,
+							'purchase_reference' => (string) $order_id,
+							'purchase_kind' => 'order',
 						),
 					),
 				)
 			);
 			Edge\Client::confirm('payment_demands', $payment_demand_id);
 		} catch (Exception $e) {
-			throw new Exception($this->getEdgeErrorMessage($e));
+			$message = $this->getEdgeErrorMessage($e);
+			$context = array(
+				'source' => 'edge-woocommerce',
+				'order_id' => $order_id,
+				'payment_demand_id' => $payment_demand_id,
+			);
+
+			if ($e instanceof \Edge\Exception) {
+				$context['status_code'] = $e->getStatusCode();
+			}
+
+			wc_get_logger()->error(
+				'Unable to confirm an Edge payment demand: ' . $message,
+				$context
+			);
+
+			throw new Exception($message);
 		}
 
 		$payment_result = "pending";
 
-		for ($i = 0; $i < 5; $i++) {
+		$max_poll_attempts = 16;
+
+		for ($i = 0; $i < $max_poll_attempts; $i++) {
 			$response = Edge\Client::get('payment_demands/' . rawurlencode($payment_demand_id));
 			if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
 				$payment_result = $response->data->attributes->processor_state;
 				break;
 			}
-			sleep(2);
+
+			if ($i < $max_poll_attempts - 1) {
+				sleep(2);
+			}
 		}
 
 		$order->set_transaction_id($payment_demand_id);
