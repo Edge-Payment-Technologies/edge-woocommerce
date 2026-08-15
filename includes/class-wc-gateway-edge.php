@@ -62,6 +62,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		// Actions.
 		add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
 		add_action('woocommerce_scheduled_subscription_payment_edge', array($this, 'process_subscription_payment'), 10, 2);
+		add_action('wp_ajax_edge_create_payment_demand', array($this, 'create_payment_demand'));
+		add_action('wp_ajax_nopriv_edge_create_payment_demand', array($this, 'create_payment_demand'));
+		add_action('wp_ajax_edge_prepare_payment_demand', array($this, 'prepare_payment_demand'));
+		add_action('wp_ajax_nopriv_edge_prepare_payment_demand', array($this, 'prepare_payment_demand'));
 	}
 
 	/**
@@ -121,8 +125,245 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 	public function getEdgeErrorMessage(Exception $e)
 	{
+		if ($e instanceof \Edge\Exception) {
+			$message = sanitize_text_field($e->getMessage());
+
+			return $message
+				? $message
+				: __('Edge Payments could not process the request.', 'edge-gateway');
+		}
+
 		$decoded = json_decode($e->getMessage(), true);
-		return $decoded['errors'][0]['detail'];
+		return isset($decoded['errors'][0]['detail']) && is_string($decoded['errors'][0]['detail'])
+			? sanitize_text_field($decoded['errors'][0]['detail'])
+			: __('Edge Payments could not process the request.', 'edge-gateway');
+	}
+
+	/**
+	 * Create the unconfirmed payment demand required by Edge JS.
+	 */
+	public function create_payment_demand()
+	{
+		check_ajax_referer('edge_create_payment_demand', 'nonce');
+
+		if (!$this->is_available() || !WC()->cart || WC()->cart->is_empty()) {
+			wp_send_json_error(
+				array('message' => __('Edge Payments is not available for this order.', 'edge-gateway')),
+				400
+			);
+		}
+
+		$cart_hash = WC()->cart->get_cart_hash();
+		$stored_demand = WC()->session->get('edge_payment_demand');
+
+		if (
+			is_array($stored_demand) &&
+			isset($stored_demand['cart_hash'], $stored_demand['payment_demand_id']) &&
+			$stored_demand['cart_hash'] === $cart_hash
+		) {
+			wp_send_json_success(array('payment_demand_id' => $stored_demand['payment_demand_id']));
+		}
+
+		\Edge\Auth::setApiKey($this->private_key);
+
+		try {
+			$demand = \Edge\Client::create(
+				'payment_demands',
+				array(
+					'data' => array(
+						'type' => 'payment_demands',
+						'attributes' => array(
+							'amount_cents' => (int) round((float) WC()->cart->get_total('edit') * 100),
+							'amount_currency' => get_woocommerce_currency(),
+							'idempotency_key' => wp_generate_uuid4(),
+							'description' => __('WooCommerce checkout', 'edge-gateway'),
+						),
+					),
+				)
+			);
+		} catch (Exception $e) {
+			wc_get_logger()->error(
+				'Unable to create an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
+				array('source' => 'edge-woocommerce')
+			);
+
+			wp_send_json_error(
+				array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
+				502
+			);
+		}
+
+		$payment_demand_id = isset($demand->data->id) ? sanitize_text_field($demand->data->id) : '';
+
+		if (!$payment_demand_id) {
+			wp_send_json_error(
+				array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
+				502
+			);
+		}
+
+		WC()->session->set(
+			'edge_payment_demand',
+			array(
+				'cart_hash' => $cart_hash,
+				'payment_demand_id' => $payment_demand_id,
+			)
+		);
+
+		wp_send_json_success(array('payment_demand_id' => $payment_demand_id));
+	}
+
+	/**
+	 * Attach checkout customer and address relationships before Edge verifies the card.
+	 */
+	public function prepare_payment_demand()
+	{
+		check_ajax_referer('edge_create_payment_demand', 'nonce');
+
+		$payment_demand_id = isset($_POST['payment_demand_id'])
+			? sanitize_text_field(wp_unslash($_POST['payment_demand_id']))
+			: '';
+		$stored_demand = WC()->session->get('edge_payment_demand');
+
+		if (
+			!$payment_demand_id ||
+			!wp_is_uuid($payment_demand_id) ||
+			!is_array($stored_demand) ||
+			!isset($stored_demand['payment_demand_id']) ||
+			!hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
+		) {
+			wp_send_json_error(array('message' => __('Invalid Edge payment reference.', 'edge-gateway')), 400);
+		}
+
+		$billing = isset($_POST['billing_address'])
+			? json_decode(wp_unslash($_POST['billing_address']), true)
+			: array();
+		$shipping = isset($_POST['shipping_address'])
+			? json_decode(wp_unslash($_POST['shipping_address']), true)
+			: array();
+
+		if (!is_array($billing) || empty($billing['email'])) {
+			wp_send_json_error(array('message' => __('Please enter a valid billing address.', 'edge-gateway')), 400);
+		}
+
+		$billing = wc_clean($billing);
+		$shipping = is_array($shipping) ? wc_clean($shipping) : array();
+		$billing['email'] = sanitize_email($billing['email']);
+		$checkout_hash = hash('sha256', wp_json_encode(array($billing, $shipping)));
+
+		if (
+			isset($stored_demand['checkout_hash']) &&
+			$stored_demand['checkout_hash'] === $checkout_hash &&
+			!empty($stored_demand['relationships'])
+		) {
+			wp_send_json_success();
+		}
+
+		\Edge\Auth::setApiKey($this->private_key);
+
+		try {
+			$relationships = $this->create_checkout_relationships($billing, $shipping);
+
+			\Edge\Client::update(
+				'payment_demands/' . rawurlencode($payment_demand_id),
+				array(
+					'data' => array(
+						'id' => $payment_demand_id,
+						'type' => 'payment_demands',
+						'relationships' => $relationships,
+					),
+				)
+			);
+		} catch (Exception $e) {
+			wc_get_logger()->error(
+				'Unable to prepare an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
+				array('source' => 'edge-woocommerce')
+			);
+
+			wp_send_json_error(
+				array('message' => __('Unable to prepare Edge Payments. Please try again.', 'edge-gateway')),
+				502
+			);
+		}
+
+		$stored_demand['relationships'] = $relationships;
+		$stored_demand['checkout_hash'] = $checkout_hash;
+		WC()->session->set('edge_payment_demand', $stored_demand);
+
+		wp_send_json_success();
+	}
+
+	/**
+	 * Create the Edge customer and addresses represented by Checkout Block data.
+	 *
+	 * @param array $billing Billing address data.
+	 * @param array $shipping Shipping address data.
+	 * @return array
+	 */
+	private function create_checkout_relationships($billing, $shipping)
+	{
+		$customers = \Edge\Client::get('customers', array('filter' => array('email' => $billing['email'])));
+
+		if (!empty($customers->data[0]->id)) {
+			$customer_id = $customers->data[0]->id;
+		} else {
+			$customer = \Edge\Client::create(
+				'customers',
+				array(
+					'data' => array(
+						'type' => 'customers',
+						'attributes' => array(
+							'name' => trim(($billing['first_name'] ?? '') . ' ' . ($billing['last_name'] ?? '')),
+							'email' => $billing['email'],
+						),
+					),
+				)
+			);
+			$customer_id = $customer->data->id;
+		}
+
+		$billing_address = $this->create_edge_address($billing);
+		$shipping_address = $this->create_edge_address(array_merge($billing, array_filter($shipping)));
+
+		return array(
+			'payer' => array(
+				'data' => array('id' => (string) $customer_id, 'type' => 'customers'),
+			),
+			'billing_address' => array(
+				'data' => array('id' => (string) $billing_address->data->id, 'type' => 'consumer_addresses'),
+			),
+			'shipping_address' => array(
+				'data' => array('id' => (string) $shipping_address->data->id, 'type' => 'consumer_addresses'),
+			),
+		);
+	}
+
+	/**
+	 * Create an Edge address from a WooCommerce address array.
+	 *
+	 * @param array $address WooCommerce address data.
+	 * @return object
+	 */
+	private function create_edge_address($address)
+	{
+		$country = isset($address['country']) ? $address['country'] : '';
+
+		return \Edge\Client::create(
+			'consumer_addresses',
+			array(
+				'data' => array(
+					'type' => 'consumer_addresses',
+					'attributes' => array(
+						'line_1' => $address['address_1'] ?? '',
+						'line_2' => $address['address_2'] ?? '',
+						'city' => $address['city'] ?? '',
+						'state' => $address['state'] ?? '',
+						'zip' => $address['postcode'] ?? '',
+						'country' => \Edge\Helpers::convertAlpha2ToAlpha3($country),
+					),
+				),
+			)
+		);
 	}
 
 	/**
@@ -133,191 +374,86 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 	 */
 	public function process_payment($order_id)
 	{
-
 		$order = wc_get_order($order_id);
+		$payment_demand_id = isset($_POST['payment_demand_id'])
+			? sanitize_text_field(wp_unslash($_POST['payment_demand_id']))
+			: '';
+		$stored_demand = WC()->session->get('edge_payment_demand');
 
-		\Edge\Auth::setApiKey($this->get_option('test_private_key'));
-
-		try {
-			//Fetch all customers with this email
-			$getCustomer = \Edge\Client::get('customers', [
-				'filter' =>
-					['email' => $order->get_billing_email()]
-			]);
-		} catch (Exception $e) {
-			throw new Exception(self::getEdgeErrorMessage($e));
+		if (
+			!$payment_demand_id ||
+			!wp_is_uuid($payment_demand_id) ||
+			!is_array($stored_demand) ||
+			!isset($stored_demand['payment_demand_id']) ||
+			empty($stored_demand['relationships']) ||
+			!hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
+		) {
+			throw new Exception(__('Invalid Edge payment reference.', 'edge-gateway'));
 		}
 
+		\Edge\Auth::setApiKey($this->private_key);
 
-		//Do they exist?
-		if (!empty($getCustomer->data[0]->id)) {
-			$edgeCustomerId = $getCustomer->data[0]->id;
+		try {
+			Edge\Client::update(
+				'payment_demands/' . rawurlencode($payment_demand_id),
+				array(
+					'data' => array(
+						'id' => $payment_demand_id,
+						'type' => 'payment_demands',
+						'attributes' => array(
+							'amount_cents' => (int) round((float) $order->get_total() * 100),
+							'amount_currency' => $order->get_currency(),
+							'description' => 'WooCommerce Order #' . $order_id,
+							'purchase_reference' => (string) $order_id,
+							'purchase_kind' => 'order',
+						),
+					),
+				)
+			);
+			Edge\Client::confirm('payment_demands', $payment_demand_id);
+		} catch (Exception $e) {
+			$message = $this->getEdgeErrorMessage($e);
+			$context = array(
+				'source' => 'edge-woocommerce',
+				'order_id' => $order_id,
+				'payment_demand_id' => $payment_demand_id,
+			);
 
-			//No? Create a new customer
-		} else {
-
-			$createEdgeCustomer = [
-				'name' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
-				'email' => $order->get_billing_email()
-			];
-
-
-			try {
-				$createEdgeCustomer = \Edge\Client::create('customers', ['data' => ['attributes' => $createEdgeCustomer]]);
-			} catch (Exception $e) {
-				throw new Exception(self::getEdgeErrorMessage($e));
+			if ($e instanceof \Edge\Exception) {
+				$context['status_code'] = $e->getStatusCode();
 			}
 
-
-			//Set customer ID
-			$edgeCustomerId = $createEdgeCustomer->data->id;
-		}
-
-		//Next add the billing address
-		$edgeBillingAddress = [
-			'line_1' => $order->get_billing_address_1(),
-			'line_2' => $order->get_billing_address_2(),
-			'city' => $order->get_billing_city(),
-			'state' => $order->get_billing_state(),
-			'zip' => $order->get_billing_postcode(),
-			'country' => \Edge\Helpers::convertAlpha2ToAlpha3($order->get_shipping_country()),
-		];
-
-		try {
-			$createAddress = Edge\Client::create('consumer_addresses', ['data' => ['attributes' => $edgeBillingAddress]]);
-		} catch (Exception $e) {
-			throw new Exception(self::getEdgeErrorMessage($e));
-		}
-
-		//Next add the shipping address
-		$edgeShippingAddress = [
-			'line_1' => $order->get_shipping_address_1(),
-			'line_2' => $order->get_shipping_address_2(),
-			'city' => $order->get_shipping_city(),
-			'state' => $order->get_shipping_state(),
-			'zip' => $order->get_shipping_postcode(),
-			'country' => \Edge\Helpers::convertAlpha2ToAlpha3($order->get_shipping_country()),
-		];
-
-		try {
-			$createShippingAddress = Edge\Client::create('consumer_addresses', ['data' => ['attributes' => $edgeShippingAddress]]);
-		} catch (Exception $e) {
-			throw new Exception(self::getEdgeErrorMessage($e));
-		}
-
-		$edgeAddressId = $createAddress->data->id;
-		$edgeShippingAddressId = $createShippingAddress->data->id;
-
-		$expiry_year = (int) 20 . $_POST['year'];
-
-		$edgePaymentMethod = [
-			'card_pan_token' => (string) $_POST['number'],
-			'card_cvv_token' => (string) $_POST['cvc'],
-			'expiry_year' => (int) $expiry_year,
-			'expiry_month' => (int) $_POST['month'],
-		];
-
-		$relationships = [
-			'customer' => [
-				'data' => [
-					'id' => (string) $edgeCustomerId,
-					'type' => 'string'
-				]
-			],
-			'address' => [
-				'data' => [
-					'id' => (string) $edgeAddressId,
-					'type' => 'string'
-				]
-			]
-		];
-
-
-		//Link payment card
-		$linkPaymentMethod = Edge\Client::create(
-			'payment_methods',
-			[
-				'data' =>
-					[
-						'attributes' => $edgePaymentMethod,
-						'relationships' => $relationships
-					]
-			]
-		);
-
-		$paymentMethodId = $linkPaymentMethod->data->id;
-
-		//PaymentSubscriptions logic here
-		$edgeCreatePaymentDemand = [
-			'amount_cents' => (float) $order->get_total() * 100,
-			'captured' => true,
-			'currency' => $order->get_currency(),
-			'description' => 'WooCommerce Order #' . $order_id,
-			'idempotency_key' => "",
-			'purchase_identifier' => $order_id
-		];
-
-		$relationships = [
-			'customer' => [
-				'data' => [
-					'id' => (string) $edgeCustomerId,
-					'type' => 'string'
-				]
-			],
-			'payment_method' => [
-				'data' => [
-					'id' => (string) $paymentMethodId,
-					'type' => 'string'
-				]
-			],
-			'shipping_address' => [
-				'data' => [
-					'id' => (string) $edgeShippingAddressId,
-					'type' => 'string'
-				]
-			]
-		];
-		try {
-			//Link payment card
-			$chargeCustomer = Edge\Client::create(
-				'payment_demands',
-				[
-					'data' =>
-						[
-							'attributes' => $edgeCreatePaymentDemand,
-							'relationships' => $relationships
-						]
-				]
+			wc_get_logger()->error(
+				'Unable to confirm an Edge payment demand: ' . $message,
+				$context
 			);
-		} catch (Exception $e) {
-			throw new Exception(self::getEdgeErrorMessage($e));
+
+			throw new Exception($message);
 		}
 
-		$edgePaymentDemandId = $chargeCustomer->data->id;
-
-		//Call get PaymentDemand endpoint to check status, do it 3 more times if its still pending
 		$payment_result = "pending";
 
-		for ($i = 0; $i < 5; $i++) {
-			$response = Edge\Client::get('payment_demands/' . $edgePaymentDemandId);
+		$max_poll_attempts = 16;
+
+		for ($i = 0; $i < $max_poll_attempts; $i++) {
+			$response = Edge\Client::get('payment_demands/' . rawurlencode($payment_demand_id));
 			if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
 				$payment_result = $response->data->attributes->processor_state;
 				break;
 			}
-			sleep(2);
+
+			if ($i < $max_poll_attempts - 1) {
+				sleep(2);
+			}
 		}
 
-		$order->set_transaction_id($edgePaymentDemandId);
+		$order->set_transaction_id($payment_demand_id);
 
 		if ('succeeded' === $payment_result) {
-			$order = wc_get_order($order_id);
-
 			$order->payment_complete();
-
-			// Remove cart
 			WC()->cart->empty_cart();
+			WC()->session->__unset('edge_payment_demand');
 
-			// Return thankyou redirect
 			return array(
 				'result' => 'success',
 				'redirect' => $this->get_return_url($order)

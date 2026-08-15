@@ -15,12 +15,9 @@ const defaultLabel = __(
 
 const label = decodeEntities(settings.title) || defaultLabel;
 
-var edgeCardData = {
-  'number': '',
-  'cvc': '',
-  'expiryMonth': '',
-  'expiryYear': ''
-};
+let edgeClient;
+let edgePaymentDemandId = '';
+let edgePaymentMethodReady = false;
 
 /**
  * Custom form field component
@@ -44,62 +41,90 @@ const LoadEdgePaymentsForm = () => {
 };
 
 
-const ActivateEdgePayments = () => {
-
-
-  // Initialize Edge with the publishable key from settings
-  const edgeJS = new Edge(settings.publishable_key);
-
-  // Initialize the form with Edge
-  edgeJS.initializeForm().then(function (form) {
-
-    // Configure the form inputs
-    const inputs = form.inputs('card-fields', {
-      theme: 'default',
-      inputBorderColor: '#d0d5dd',
-      inputTextColor: '#212529',
-      primaryColor: '#155eef',
-      inputBorderRadius: '8px',
-      inputHeight: '40px',
-      inputFontSize: '13px',
-      inputBoxShadowString: '0px 1px 2px rgba(16, 24, 40, 0.05)'
-    });
-
-    // Listen for changes in the form inputs
-    inputs.on('change', async (data) => {
-      let cardData = data.encryptedCard;
-      // Update the hidden fields with the encrypted card data
-      edgeCardData.number = cardData.number;
-      edgeCardData.cvc = cardData.cvc;
-      edgeCardData.expiryMonth = cardData.expMonth;
-      edgeCardData.expiryYear = cardData.expYear;
-
-    });
-
+const ActivateEdgePayments = async () => {
+  const response = await fetch(settings.payment_demand_url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      action: 'edge_create_payment_demand',
+      nonce: settings.payment_demand_nonce,
+    }),
   });
-}
+  const result = await response.json();
+
+  if (!response.ok || !result.success || !result.data?.payment_demand_id) {
+    throw new Error(result.data?.message || 'Unable to initialize Edge Payments.');
+  }
+
+  edgePaymentDemandId = result.data.payment_demand_id;
+  edgeClient = new Edge(settings.publishable_key, {
+    formFactor: 'inputs',
+  });
+
+  edgeClient.on('payment_method_changed', (event) => {
+    edgePaymentMethodReady = Boolean(event.detail?.ready);
+  });
+
+  const paymentIframe = edgeClient.mountPaymentForm('card-fields', edgePaymentDemandId);
+  paymentIframe.style.border = '0';
+  paymentIframe.style.boxShadow = 'none';
+};
+
+const PrepareEdgePaymentDemand = async (billingAddress, shippingAddress) => {
+  const response = await fetch(settings.payment_demand_url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      action: 'edge_prepare_payment_demand',
+      nonce: settings.payment_demand_nonce,
+      payment_demand_id: edgePaymentDemandId,
+      billing_address: JSON.stringify(billingAddress),
+      shipping_address: JSON.stringify(shippingAddress),
+    }),
+  });
+  const result = await response.json();
+
+  if (!response.ok || !result.success) {
+    throw new Error(result.data?.message || 'Unable to prepare Edge Payments.');
+  }
+};
+
 /**
  * Content component
  */
 const Content = (props) => {
-  const { eventRegistration, emitResponse } = props;
+  const { billing, shippingData, eventRegistration, emitResponse } = props;
   const { onPaymentSetup } = eventRegistration;
+  const billingAddress = billing?.billingAddress || {};
+  const shippingAddress = shippingData?.shippingAddress || billingAddress;
 
   useEffect(() => {
     const unsubscribe = onPaymentSetup(async () => {
+      if (edgeClient && edgePaymentDemandId && edgePaymentMethodReady) {
+        try {
+          await PrepareEdgePaymentDemand(
+            billingAddress,
+            shippingAddress
+          );
+          await edgeClient.verifyPaymentMethod();
+        } catch (error) {
+          return {
+            type: emitResponse.responseTypes.ERROR,
+            message: 'We could not verify your card. Please check your card details and try again.',
+          };
+        }
 
-      const EdgePaymentData = edgeCardData;
-      const customDataIsValid = !!EdgePaymentData.number.length;
-
-      if (customDataIsValid) {
         return {
           type: emitResponse.responseTypes.SUCCESS,
           meta: {
             paymentMethodData: {
-              'number': EdgePaymentData.number,
-              'cvc': EdgePaymentData.cvc,
-              'month': EdgePaymentData.expiryMonth,
-              'year': EdgePaymentData.expiryYear,
+              payment_demand_id: edgePaymentDemandId,
             },
           },
         };
@@ -117,7 +142,9 @@ const Content = (props) => {
   }, [
     emitResponse.responseTypes.ERROR,
     emitResponse.responseTypes.SUCCESS,
+    billingAddress,
     onPaymentSetup,
+    shippingAddress,
   ]);
 
   return createElement(
@@ -146,7 +173,6 @@ const Label = (props) => {
  */
 const WCEdge = {
   name: "edge",
-  name: "Edge",
   label: createElement(Label),
   content: createElement(Content),
   edit: createElement(Content),
