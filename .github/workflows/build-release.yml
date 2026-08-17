@@ -26,12 +26,12 @@ jobs:
                   restore-keys: |
                       ${{ runner.os }}-php-
             - name: Setup PHP
-              uses: shivammathur/setup-php
+              uses: shivammathur/setup-php@2.37.2
               with:
                   php-version: '8.5.9'
                   tools: composer
             - name: Setup Node.js
-              uses: actions/setup-node
+              uses: actions/setup-node@7.0.0
               with:
                   node-version: '26.1.0'
                   cache: 'npm'
