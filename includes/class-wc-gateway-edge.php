@@ -62,6 +62,56 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 		// Actions.
 		add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
 		add_action('woocommerce_scheduled_subscription_payment_edge', array($this, 'process_subscription_payment'), 10, 2);
+		add_filter('woocommerce_settings_api_sanitized_fields_' . $this->id, array($this, 'drop_display_only_settings'));
+	}
+
+	/**
+	 * The mode the gateway is currently transacting in.
+	 *
+	 * Named to match the `mode` Edge puts on its own records, so the two can be
+	 * compared without translating between them.
+	 *
+	 * @return string  Either 'sandbox' or 'live'.
+	 */
+	public function get_mode()
+	{
+		return $this->testmode ? 'sandbox' : 'live';
+	}
+
+	/**
+	 * The secret key for a mode.
+	 *
+	 * The mode is asked for rather than assumed because a webhook can arrive long
+	 * after the settings were switched from sandbox to live. Reading that order's
+	 * payment demand back with the wrong key would 404 and strand it.
+	 *
+	 * @param  string  $mode  'sandbox', 'live', or empty for the current mode.
+	 * @return string
+	 */
+	public function get_secret_key($mode = '')
+	{
+		if ('' === $mode) {
+			$mode = $this->get_mode();
+		}
+
+		return 'live' === $mode ? $this->get_option('private_key') : $this->get_option('test_private_key');
+	}
+
+	/**
+	 * Keep fields that only exist to be read out of the saved settings.
+	 *
+	 * WooCommerce writes back every form field it is given, and the webhook URL
+	 * is derived from the site address rather than entered, so a stored copy
+	 * could only ever go stale.
+	 *
+	 * @param  array  $settings
+	 * @return array
+	 */
+	public function drop_display_only_settings($settings)
+	{
+		unset($settings['webhook_url']);
+
+		return $settings;
 	}
 
 	/**
@@ -114,7 +164,96 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 			'private_key' => array(
 				'title' => 'Live Private Key',
 				'type' => 'password'
+			),
+			'webhook_url' => array(
+				'title' => __('Webhook URL', 'edge-gateway'),
+				'type' => 'edge_webhook_url',
+				'description' => __('Create a webhook in your Edge dashboard pointing at this URL, subscribed to <code>transaction.payment_demands.succeeded</code> and <code>transaction.payment_demands.failed</code>. Orders are placed on hold at checkout and stay there until Edge reports the outcome here, so no order completes without it.', 'edge-gateway'),
 			)
+		);
+	}
+
+	/**
+	 * Render the webhook URL, with a button to copy it.
+	 *
+	 * Read-only: the URL follows the site address, and is shown here only so it
+	 * can be pasted into the Edge dashboard.
+	 *
+	 * @param  string  $key   Field key.
+	 * @param  array   $data  Field definition.
+	 * @return string
+	 */
+	public function generate_edge_webhook_url_html($key, $data)
+	{
+		$field_key = $this->get_field_key($key);
+		$url = WC_Edge_Webhook_Handler::callback_url();
+
+		$this->enqueue_copy_to_clipboard();
+
+		ob_start();
+		?>
+		<tr valign="top">
+			<th scope="row" class="titledesc">
+				<label for="<?php echo esc_attr($field_key); ?>"><?php echo wp_kses_post($data['title']); ?></label>
+			</th>
+			<td class="forminp">
+				<fieldset>
+					<legend class="screen-reader-text"><span><?php echo wp_kses_post($data['title']); ?></span></legend>
+					<input
+						type="text"
+						id="<?php echo esc_attr($field_key); ?>"
+						class="input-text regular-input code"
+						value="<?php echo esc_attr($url); ?>"
+						readonly="readonly"
+						onfocus="this.select();"
+					/>
+					<button
+						type="button"
+						class="button wc-edge-copy-webhook-url"
+						data-clipboard-target="#<?php echo esc_attr($field_key); ?>"
+					><?php esc_html_e('Copy URL', 'edge-gateway'); ?></button>
+					<span class="wc-edge-copy-webhook-url-feedback" aria-hidden="true"></span>
+					<p class="description"><?php echo wp_kses_post($data['description']); ?></p>
+				</fieldset>
+			</td>
+		</tr>
+		<?php
+		return ob_get_clean();
+	}
+
+	/**
+	 * Wire up the copy button.
+	 *
+	 * clipboard.js ships with WordPress and is what core's own copy buttons use.
+	 * `navigator.clipboard` would be less code but is unavailable over plain
+	 * HTTP, which a fair number of admin screens still run on.
+	 */
+	private function enqueue_copy_to_clipboard()
+	{
+		wp_enqueue_script('clipboard');
+		wp_enqueue_script('wp-a11y');
+
+		wp_add_inline_script(
+			'clipboard',
+			'( function() {
+				if ( typeof ClipboardJS === "undefined" ) {
+					return;
+				}
+
+				new ClipboardJS( ".wc-edge-copy-webhook-url" ).on( "success", function( event ) {
+					var feedback = event.trigger.parentNode.querySelector( ".wc-edge-copy-webhook-url-feedback" );
+
+					event.clearSelection();
+
+					if ( feedback ) {
+						feedback.textContent = ' . wp_json_encode(__('Copied!', 'edge-gateway')) . ';
+					}
+
+					if ( window.wp && window.wp.a11y ) {
+						window.wp.a11y.speak( ' . wp_json_encode(__('The webhook URL has been copied to your clipboard.', 'edge-gateway')) . ' );
+					}
+				} );
+			} )();'
 		);
 	}
 
@@ -136,7 +275,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 		$order = wc_get_order($order_id);
 
-		\Edge\Auth::setApiKey($this->get_option('test_private_key'));
+		\Edge\Auth::setApiKey($this->get_secret_key());
 
 		try {
 			//Fetch all customers with this email
@@ -295,37 +434,49 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
 		$edgePaymentDemandId = $chargeCustomer->data->id;
 
-		//Call get PaymentDemand endpoint to check status, do it 3 more times if its still pending
-		$payment_result = "pending";
-
-		for ($i = 0; $i < 5; $i++) {
-			$response = Edge\Client::get('payment_demands/' . $edgePaymentDemandId);
-			if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
-				$payment_result = $response->data->attributes->processor_state;
-				break;
-			}
-			sleep(2);
-		}
-
+		// Bind the demand to the order and save it before doing anything else.
+		// Edge can deliver the webhook for this demand before the shopper's
+		// browser has finished being redirected, and a delivery that arrives with
+		// no order to match is discarded as belonging to somewhere else.
 		$order->set_transaction_id($edgePaymentDemandId);
+		$order->update_meta_data(WC_Edge_Webhook_Handler::DEMAND_META, $edgePaymentDemandId);
+		$order->update_meta_data(WC_Edge_Webhook_Handler::MODE_META, $this->get_mode());
+		$order->save();
 
-		if ('succeeded' === $payment_result) {
-			$order = wc_get_order($order_id);
+		// A demand is rarely settled by the time it is created, so the webhook is
+		// what decides the outcome. The state already on the create response is
+		// read anyway: it costs no extra request, and it spares the shopper a
+		// thank-you page for a card that was turned down outright. The webhook
+		// still has the last word in every case.
+		$processor_state = isset($chargeCustomer->data->attributes->processor_state)
+			? (string) $chargeCustomer->data->attributes->processor_state
+			: '';
 
-			$order->payment_complete();
+		if ('failed' === $processor_state) {
+			$order->update_status('failed', __('Edge declined this payment.', 'edge-gateway'));
 
-			// Remove cart
-			WC()->cart->empty_cart();
-
-			// Return thankyou redirect
-			return array(
-				'result' => 'success',
-				'redirect' => $this->get_return_url($order)
-			);
-		} else {
-			$message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway');
-			throw new Exception($message);
+			throw new Exception(__('Your payment was declined. Please check your card details or try another card.', 'edge-gateway'));
 		}
+
+		if ('succeeded' === $processor_state) {
+			$order->payment_complete($edgePaymentDemandId);
+		} else {
+			$order->update_status(
+				'on-hold',
+				__('Awaiting confirmation from Edge. The order will complete when Edge reports that the payment succeeded.', 'edge-gateway')
+			);
+		}
+
+		// Remove cart
+		if (WC()->cart) {
+			WC()->cart->empty_cart();
+		}
+
+		// Return thankyou redirect
+		return array(
+			'result' => 'success',
+			'redirect' => $this->get_return_url($order)
+		);
 	}
 
 	/**
