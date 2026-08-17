@@ -1,27 +1,46 @@
 {
-  "name": "woocommerce-edge-gateway",
-  "title": "WooCommerce Edge Payments Gateway",
-  "version": "1.0.7",
-  "author": "WooCommerce",
-  "license": "GPL-3.0+",
-  "keywords": [],
-  "engines": {
-    "node": ">=6.9.4",
-    "npm": ">=1.1.0"
-  },
-  "devDependencies": {
-    "@woocommerce/dependency-extraction-webpack-plugin": "^2.2.0",
-    "@wordpress/scripts": "^34.1.0",
-    "cross-env": "^7.0.3"
-  },
-  "scripts": {
-    "start": "wp-scripts start",
-    "build": "wp-scripts build && npm run i18n:build",
-    "i18n": "npm run i18n:build",
-    "i18n:build": "npm run i18n:pot && ./bin/build_i18n.sh",
-    "i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE <EMAIL@ADDRESS>\"}' . languages/edge-gateway.pot",
-    "i18n:json": "$(which wp) i18n make-json languages --no-purge",
-    "packages-update": "wp-scripts packages-update",
-    "check-engines": "wp-scripts check-engines"
-  }
+	"name": "woocommerce-edge-gateway",
+	"title": "WooCommerce Edge Payments Gateway",
+	"version": "1.0.7",
+	"author": "WooCommerce",
+	"license": "GPL-3.0+",
+	"keywords": [],
+	"engines": {
+		"node": ">=6.9.4",
+		"npm": ">=1.1.0"
+	},
+	"files": [
+		"woocommerce-edge-gateway.php",
+		"includes/",
+		"vendor/",
+		"assets/"
+	],
+	"dependencies": {
+		"@wordpress/element": "^8.5.0",
+		"@wordpress/i18n": "^6.26.0"
+	},
+	"devDependencies": {
+		"@woocommerce/dependency-extraction-webpack-plugin": "^2.2.0",
+		"@wordpress/scripts": "^34.1.0",
+		"cross-env": "^7.0.3"
+	},
+	"scripts": {
+		"start": "wp-scripts start",
+		"build": "wp-scripts build && npm run i18n:build",
+		"check-engines": "wp-scripts check-engines",
+		"check-licenses": "wp-scripts check-licenses",
+		"format": "wp-scripts format",
+		"lint:css": "wp-scripts lint-style",
+		"lint:js": "wp-scripts lint-js",
+		"lint:md:docs": "wp-scripts lint-md-docs",
+		"lint:pkg-json": "wp-scripts lint-pkg-json",
+		"packages-update": "wp-scripts packages-update",
+		"plugin-zip": "wp-scripts plugin-zip",
+		"test:e2e": "wp-scripts test-e2e",
+		"test:unit": "wp-scripts test-unit-js",
+		"i18n": "npm run i18n:build",
+		"i18n:build": "npm run i18n:pot && ./bin/build_i18n.sh",
+		"i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE <EMAIL@ADDRESS>\"}' . languages/edge-gateway.pot",
+		"i18n:json": "$(which wp) i18n make-json languages --no-purge"
+	}
 }
