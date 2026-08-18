@@ -1,35 +1,68 @@
 name: Build Release
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    branches:
-      - main
-      - "!revert-**"
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+    pull_request:
+        types: [opened, reopened, synchronize, ready_for_review]
+        branches:
+            - main
+            - '!revert-**'
+    push:
+        branches:
+            - main
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-      # - name: Validate composer.json and composer.lock
-      #   run: composer validate --strict
-      - uses: actions/cache@v6.1.0
-        with:
-          path: vendor
-          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-
-      - name: Generating zip
-        uses: rudlinkon/action-wordpress-build-zip@1.5.0
-        with:
-          install-composer: true
-          node-version: 26.1.0
-          npm-run-build: true
+    build:
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@v7.0.1
+            - uses: actions/cache@v6.1.0
+              with:
+                  path: vendor
+                  key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-php-
+            - name: Setup PHP
+              uses: shivammathur/setup-php@2.37.2
+              with:
+                  php-version: '8.5.9'
+                  tools: composer
+            - name: Setup Node.js
+              uses: actions/setup-node@7.0.0
+              with:
+                  node-version: '26.1.0'
+                  cache: 'npm'
+            - name: Install Composer dependencies
+              run: composer install --no-dev --optimize-autoloader
+            - name: Install npm dependencies
+              run: npm ci
+            - name: Validate composer.json and composer.lock
+              run: composer validate --strict
+            - name: Lint the CSS files
+              run: npm run lint:css
+            - name: Lint the JS asset files
+              run: npm run lint:js
+            - name: Lint all documentation
+              run: npm run lint:md:docs
+            - name: Lint the Package file
+              run: npm run lint:pkg-json
+            - name: Check the WP engine list
+              run: npm run check-engines
+            - name: Verify license usage
+              run: npm run check-licenses
+            - name: Build blocks and assets
+              run: npm run build
+            - name: Build a plugin zip
+              run: npm run plugin-zip
+            - name: Upload release asset
+              uses: softprops/action-gh-release
+              env:
+                  # Note, this is an exception to action secrets: GH_TOKEN is always available and provides access to
+                  # the current repository this action runs in.
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  # Provide what the file should be named when attached to the release (plugin-name.zip)
+                  files: ${{ github.workspace }}/edge-woocommerce.zip
