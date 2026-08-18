@@ -168,7 +168,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     try {
       $demand = \Edge\Client::create(
-        'payment_demands',
+        'v2/payment_demands',
         array(
           'data' => array(
             'type' => 'payment_demands',
@@ -266,7 +266,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       $relationships = $this->create_checkout_relationships($billing, $shipping);
 
       \Edge\Client::update(
-        'payment_demands/' . rawurlencode($payment_demand_id),
+        'v2/payment_demands/' . rawurlencode($payment_demand_id),
         array(
           'data' => array(
             'id' => $payment_demand_id,
@@ -303,13 +303,13 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
    */
   private function create_checkout_relationships($billing, $shipping)
   {
-    $customers = \Edge\Client::get('customers', array('filter' => array('email' => $billing['email'])));
+    $customers = \Edge\Client::get('v2/customers', array('filter' => array('email' => $billing['email'])));
 
     if (!empty($customers->data[0]->id)) {
       $customer_id = $customers->data[0]->id;
     } else {
       $customer = \Edge\Client::create(
-        'customers',
+        'v2/customers',
         array(
           'data' => array(
             'type' => 'customers',
@@ -350,7 +350,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $country = isset($address['country']) ? $address['country'] : '';
 
     return \Edge\Client::create(
-      'consumer_addresses',
+      'v2/consumer_addresses',
       array(
         'data' => array(
           'type' => 'consumer_addresses',
@@ -396,7 +396,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     try {
       Edge\Client::update(
-        'payment_demands/' . rawurlencode($payment_demand_id),
+        'v2/payment_demands/' . rawurlencode($payment_demand_id),
         array(
           'data' => array(
             'id' => $payment_demand_id,
@@ -411,7 +411,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           ),
         )
       );
-      Edge\Client::confirm('payment_demands', $payment_demand_id);
+      Edge\Client::confirm('v2/payment_demands', $payment_demand_id);
     } catch (Exception $e) {
       $message = $this->getEdgeErrorMessage($e);
       $context = array(
@@ -437,7 +437,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $max_poll_attempts = 16;
 
     for ($i = 0; $i < $max_poll_attempts; $i++) {
-      $response = Edge\Client::get('payment_demands/' . rawurlencode($payment_demand_id));
+      $response = Edge\Client::get('v2/payment_demands/' . rawurlencode($payment_demand_id));
       if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
         $payment_result = $response->data->attributes->processor_state;
         break;
