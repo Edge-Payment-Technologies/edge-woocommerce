@@ -29,7 +29,6 @@ jobs:
               uses: actions/setup-node@v7.0.0
               with:
                   node-version: '26.1.0'
-                  cache: 'npm'
             - name: Install Composer dependencies
               run: composer install --no-dev --optimize-autoloader
             - name: Install npm dependencies
