@@ -189,7 +189,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       );
 
       wp_send_json_error(
-        array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
+        array('message' => __('Unable to create the payment demand: ' . $this->getEdgeErrorMessage($e), 'edge-gateway')),
         502
       );
     }
@@ -198,7 +198,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     if (!$payment_demand_id) {
       wp_send_json_error(
-        array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
+        array('message' => __('No payment demand id found, this shouldn\'t happen.', 'edge-gateway')),
         502
       );
     }
