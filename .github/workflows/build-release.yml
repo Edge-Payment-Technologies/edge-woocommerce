@@ -1,35 +1,35 @@
 name: Build Release
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    branches:
-      - main
-      - "!revert-**"
-  push:
-    branches:
-      - main
-  workflow_dispatch:
+    pull_request:
+        types: [opened, reopened, synchronize, ready_for_review]
+        branches:
+            - main
+            - '!revert-**'
+    push:
+        branches:
+            - main
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-      # - name: Validate composer.json and composer.lock
-      #   run: composer validate --strict
-      - uses: actions/cache@v6.1.0
-        with:
-          path: vendor
-          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-
-      - name: Generating zip
-        uses: rudlinkon/action-wordpress-build-zip@1.5.0
-        with:
-          install-composer: true
-          node-version: 26.1.0
-          npm-run-build: true
+    build:
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@v7.0.1
+            # - name: Validate composer.json and composer.lock
+            #   run: composer validate --strict
+            - uses: actions/cache@v6.1.0
+              with:
+                  path: vendor
+                  key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-php-
+            - name: Generating zip
+              uses: rudlinkon/action-wordpress-build-zip@1.5.0
+              with:
+                  install-composer: true
+                  node-version: 26.1.0
+                  npm-run-build: true

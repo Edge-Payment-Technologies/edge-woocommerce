@@ -1,20 +1,20 @@
 name: Auto-Assign Reviewers
 
 on:
-  pull_request:
-    types: [opened]
-  workflow_dispatch:
+    pull_request:
+        types: [opened]
+    workflow_dispatch:
 
 jobs:
-  run:
-    if:  startsWith(github.head_ref, 'dependabot/') != true
-    runs-on: ubuntu-24.04
-    permissions:
-      issues: write
-      pull-requests: write
-    steps:
-      - name: Auto-assign Issue
-        uses: pozil/auto-assign-issue@v4.0.1
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          assignees: krainboltgreene,ziyan-junaideen
+    run:
+        if: startsWith(github.head_ref, 'dependabot/') != true
+        runs-on: ubuntu-24.04
+        permissions:
+            issues: write
+            pull-requests: write
+        steps:
+            - name: Auto-assign Issue
+              uses: pozil/auto-assign-issue@v4.0.1
+              with:
+                  repo-token: ${{ secrets.GITHUB_TOKEN }}
+                  assignees: krainboltgreene,ziyan-junaideen
