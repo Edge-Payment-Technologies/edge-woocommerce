@@ -22,7 +22,7 @@ Now, the WooCommerce Edge Payments Gateway is installed, activated, and ready to
 
 ### Development Building Instructions
 
-To build the js in this project, run: 
+To build the js in this project, run:
 
 ```
 nvm use
