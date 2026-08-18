@@ -1,0 +1,64 @@
+name: Validate
+
+on:
+    pull_request:
+        types: [opened, reopened, synchronize, ready_for_review]
+        branches:
+            - main
+            - '!revert-**'
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@v7.0.1
+            - uses: actions/cache@v6.1.0
+              with:
+                  path: vendor
+                  key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-php-
+            - name: Setup PHP
+              uses: shivammathur/setup-php@2.37.2
+              with:
+                  php-version: '8.5.9'
+                  tools: composer
+            - name: Setup Node.js
+              uses: actions/setup-node@v7.0.0
+              with:
+                  node-version: '26.1.0'
+            - name: Install Composer dependencies
+              run: composer install --no-dev --optimize-autoloader
+            - name: Install npm dependencies
+              run: npm install
+            - name: Validate composer.json and composer.lock
+              continue-on-error: true
+              run: composer validate --strict
+            - name: Lint the CSS files
+              continue-on-error: true
+              run: npm run lint:css
+            - name: Lint the JS asset files
+              continue-on-error: true
+              run: npm run lint:js
+            - name: Lint all documentation
+              continue-on-error: true
+              run: npm run lint:md:docs
+            - name: Lint the Package file
+              continue-on-error: true
+              run: npm run lint:pkg-json
+            - name: Check the WP engine list
+              continue-on-error: true
+              run: npm run check-engines
+            - name: Verify license usage
+              continue-on-error: true
+              run: npm run check-licenses
+            - name: Build blocks and assets
+              continue-on-error: true
+              run: npm run build
