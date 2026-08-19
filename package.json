@@ -1,7 +1,7 @@
 {
 	"name": "woocommerce-edge-gateway",
 	"title": "WooCommerce Edge Payments Gateway",
-	"version": "1.0.12",
+	"version": "1.0.13",
 	"author": "WooCommerce",
 	"license": "GPL-3.0+",
 	"keywords": [],
