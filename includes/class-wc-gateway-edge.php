@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.7
+ * @version  1.0.13
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
@@ -411,7 +411,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           ),
         )
       );
-      Edge\Client::confirm('v2/payment_demands', $payment_demand_id);
+      Edge\Client::update('v2/payment_demands/' . rawurlencode($payment_demand_id) . '/confirm');
     } catch (Exception $e) {
       $message = $this->getEdgeErrorMessage($e);
       $context = array(

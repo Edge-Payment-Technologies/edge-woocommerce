@@ -4,12 +4,12 @@
  * Plugin Name: Edge Payments Gateway
  * Plugin URI: https://github.com/Edge-Payment-Technologies/edge-woocommerce
  * Description: Adds the Edge Payments gateway to your WooCommerce website.
- * Version: 1.0.7
+ * Version: 1.0.13
  *
  * Author: Edge Payments
- * Author URI: https://tryedge.com
+ * Author URI: https://www.tryedge.io
  *
- * Text Domain: edge-gateway
+ * Text Domain: woocommerce-edge-gateway
  * Domain Path: /i18n/languages/
  */
 
