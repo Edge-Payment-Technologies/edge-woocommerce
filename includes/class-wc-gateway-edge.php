@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.13
+ * @version  1.0.14
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
@@ -421,7 +421,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       );
 
       if ($e instanceof \Edge\Exception) {
-        $context['status_code'] = $e->getStatusCode();
+        $context['status_code'] = $e->getResponse()->getStatusCode();
       }
 
       wc_get_logger()->error(
