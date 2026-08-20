@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.14
+ * @version  1.0.15
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
@@ -125,18 +125,64 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
   public function getEdgeErrorMessage(Exception $e)
   {
-    if ($e instanceof \Edge\Exception) {
-      $message = sanitize_text_field($e->getMessage());
+    $decoded = json_decode($e->getMessage(), true);
 
-      return $message
-        ? $message
-        : __('Edge Payments could not process the request.', 'edge-gateway');
+    if (isset($decoded['errors'][0]) && is_array($decoded['errors'][0])) {
+      $error = $decoded['errors'][0];
+
+      if (isset($error['detail']) && is_string($error['detail'])) {
+        return sanitize_text_field($error['detail']);
+      }
+
+      if (isset($error['title']) && is_string($error['title'])) {
+        return sanitize_text_field($error['title']);
+      }
     }
 
-    $decoded = json_decode($e->getMessage(), true);
-    return isset($decoded['errors'][0]['detail']) && is_string($decoded['errors'][0]['detail'])
-      ? sanitize_text_field($decoded['errors'][0]['detail'])
+    $message = sanitize_text_field($e->getMessage());
+
+    return $message
+      ? $message
       : __('Edge Payments could not process the request.', 'edge-gateway');
+  }
+
+  /**
+   * Build safe diagnostic context for an Edge API failure.
+   *
+   * @param Exception $e       The exception being logged.
+   * @param array     $context Additional log context.
+   * @return array
+   */
+  public function getEdgeLogContext(Exception $e, $context = array())
+  {
+    $context = array_merge(array('source' => 'edge-woocommerce'), $context);
+
+    if (!($e instanceof \Edge\Exception)) {
+      return $context;
+    }
+
+    $status_code = method_exists($e, 'getStatusCode')
+      ? $e->getStatusCode()
+      : $e->getCode();
+    if ($status_code) {
+      $context['status_code'] = $status_code;
+    }
+
+    $request = method_exists($e, 'getRequest') ? $e->getRequest() : null;
+
+    if ($request === null) {
+      $previous = $e->getPrevious();
+      $request = $previous && method_exists($previous, 'getRequest')
+        ? $previous->getRequest()
+        : null;
+    }
+
+    if ($request !== null) {
+      $context['request_method'] = sanitize_text_field($request->getMethod());
+      $context['request_path'] = sanitize_text_field($request->getUri()->getPath());
+    }
+
+    return $context;
   }
 
   /**
@@ -185,7 +231,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     } catch (Exception $e) {
       wc_get_logger()->error(
         'Unable to create an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
-        array('source' => 'edge-woocommerce')
+        $this->getEdgeLogContext($e)
       );
 
       wp_send_json_error(
@@ -278,7 +324,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     } catch (Exception $e) {
       wc_get_logger()->error(
         'Unable to prepare an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
-        array('source' => 'edge-woocommerce')
+        $this->getEdgeLogContext($e)
       );
 
       wp_send_json_error(
@@ -411,18 +457,25 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           ),
         )
       );
-      Edge\Client::update('v2/payment_demands/' . rawurlencode($payment_demand_id) . '/confirm');
+      Edge\Client::update(
+        'v2/payment_demands/' . rawurlencode($payment_demand_id) . '/confirm',
+        array(
+          'data' => array(
+            'id' => $payment_demand_id,
+            'type' => 'payment_demands',
+            'attributes' => (object) array(),
+          ),
+        )
+      );
     } catch (Exception $e) {
       $message = $this->getEdgeErrorMessage($e);
-      $context = array(
-        'source' => 'edge-woocommerce',
-        'order_id' => $order_id,
-        'payment_demand_id' => $payment_demand_id,
+      $context = $this->getEdgeLogContext(
+        $e,
+        array(
+          'order_id' => $order_id,
+          'payment_demand_id' => $payment_demand_id,
+        )
       );
-
-      if ($e instanceof \Edge\Exception) {
-        $context['status_code'] = $e->getResponse()->getStatusCode();
-      }
 
       wc_get_logger()->error(
         'Unable to confirm an Edge payment demand: ' . $message,
