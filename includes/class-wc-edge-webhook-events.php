@@ -126,10 +126,6 @@ class WC_Edge_Webhook_Events
 	{
 		global $wpdb;
 
-		if (self::exists($event['id'])) {
-			return false;
-		}
-
 		$suppress = $wpdb->suppress_errors();
 
 		$inserted = $wpdb->insert(

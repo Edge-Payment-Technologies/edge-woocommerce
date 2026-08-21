@@ -52,6 +52,24 @@ class WC_Edge_Webhook_Handler
 	const HANDLED_RESOURCE = 'transaction.payment_demands';
 
 	/**
+	 * JSON:API type used by payment-demand resources.
+	 */
+	const DEMAND_TYPE = 'payment_demands';
+
+	/**
+	 * WooCommerce id for this payment gateway.
+	 */
+	const GATEWAY_ID = 'edge';
+
+	/**
+	 * Payment-demand events that are allowed to change an order.
+	 *
+	 * Lifecycle events such as `created` and `updated` describe activity, not a
+	 * payment outcome, and must never complete or fail a WooCommerce order.
+	 */
+	const OUTCOME_SLUGS = array('succeeded', 'failed', 'reversed', 'refunded', 'disputed');
+
+	/**
 	 * Register the route.
 	 *
 	 * @return void
@@ -142,8 +160,9 @@ class WC_Edge_Webhook_Handler
 	/**
 	 * Decide whether a delivery can be trusted.
 	 *
-	 * TODO: verify the `x-hub-signature` header against the subscription's
-	 * signing secret, and add that secret to the gateway settings.
+	 * TODO: verify the v3 `Edge-Signature` header against the subscription's
+	 * signing secret, and add that secret to the gateway settings. Older v1/v2
+	 * subscriptions use `X-Hub-Signature` instead.
 	 *
 	 * Until then the endpoint is open, which is survivable only because of how
 	 * apply() is written. The payload is never believed: it supplies an event id
@@ -152,10 +171,10 @@ class WC_Edge_Webhook_Handler
 	 * re-read a demand it already owns, but cannot invent a payment, name an
 	 * amount, or mark an order paid.
 	 *
-	 * Note also what the header is worth today. Edge sends
-	 * `base64(sha1(secret_key))`, a constant per subscription with the body not
-	 * an input, so checking it authenticates the sender and nothing else. The
-	 * read-back below is what protects the order either way.
+	 * The legacy header is `base64(sha1(secret_key))`, a constant per subscription
+	 * with the body not an input, so checking it authenticates the sender and
+	 * nothing else. The read-back below protects the order for every delivery
+	 * version until signature settings are available here.
 	 *
 	 * @param  WP_REST_Request  $request
 	 * @return bool
@@ -212,6 +231,10 @@ class WC_Edge_Webhook_Handler
 			return self::outcome('unhandled');
 		}
 
+		if (!in_array($event['slug'], self::OUTCOME_SLUGS, true)) {
+			return self::outcome('ignored-event');
+		}
+
 		$order = self::find_order($event['resource_id']);
 
 		if (!$order) {
@@ -233,17 +256,74 @@ class WC_Edge_Webhook_Handler
 
 		\Edge\Auth::setApiKey($gateway->get_secret_key($mode));
 
-		$demand = \Edge\Client::get('payment_demands/' . rawurlencode($event['resource_id']));
-
-		$state = isset($demand->data->attributes->processor_state)
-			? (string) $demand->data->attributes->processor_state
+		$demand = \Edge\Client::get('v2/payment_demands/' . rawurlencode($event['resource_id']));
+		$attributes = self::demand_attributes($demand, $event['resource_id']);
+		$state = (string) $attributes->processor_state;
+		$reason = isset($attributes->failure_reason)
+			? (string) $attributes->failure_reason
 			: '';
 
-		$reason = isset($demand->data->attributes->failure_reason)
-			? (string) $demand->data->attributes->failure_reason
-			: '';
+		// The payload selects which lifecycle event is being handled while the API
+		// read-back supplies the authoritative state. Requiring both to agree keeps
+		// a delayed or out-of-order event from applying a newer, unrelated state.
+		if ($event['slug'] !== $state) {
+			return self::outcome('state-mismatch', $order->get_id());
+		}
+
+		if ('succeeded' === $state && !self::amount_matches_order($attributes, $order)) {
+			$order->add_order_note(
+				__('Edge reported a successful payment, but its amount or currency does not match this order. The order has not been marked paid.', 'edge-gateway')
+			);
+
+			return self::outcome('payment-mismatch', $order->get_id());
+		}
 
 		return self::outcome(self::transition($order, $state, $reason, $event['resource_id']), $order->get_id());
+	}
+
+	/**
+	 * Validate and return the authoritative payment-demand attributes.
+	 *
+	 * @param  mixed   $response   Edge SDK response.
+	 * @param  string  $demand_id  Expected payment-demand id.
+	 * @return object
+	 * @throws UnexpectedValueException When the API response cannot be trusted.
+	 */
+	private static function demand_attributes($response, $demand_id)
+	{
+		if (
+			!is_object($response) ||
+			!isset($response->data) ||
+			!is_object($response->data) ||
+			!isset($response->data->id, $response->data->type, $response->data->attributes) ||
+			$demand_id !== (string) $response->data->id ||
+			self::DEMAND_TYPE !== (string) $response->data->type ||
+			!is_object($response->data->attributes) ||
+			!isset($response->data->attributes->processor_state)
+		) {
+			throw new UnexpectedValueException('Edge returned an invalid payment demand.');
+		}
+
+		return $response->data->attributes;
+	}
+
+	/**
+	 * Whether the successful demand covers this order's total.
+	 *
+	 * @param  object    $attributes  Payment-demand attributes from the Edge API.
+	 * @param  WC_Order  $order
+	 * @return bool
+	 */
+	private static function amount_matches_order($attributes, WC_Order $order)
+	{
+		if (!isset($attributes->amount_cents, $attributes->amount_currency)) {
+			return false;
+		}
+
+		$expected_cents = (int) round((float) $order->get_total() * 100);
+
+		return $expected_cents === (int) $attributes->amount_cents &&
+			0 === strcasecmp($order->get_currency(), (string) $attributes->amount_currency);
 	}
 
 	/**
@@ -332,7 +412,9 @@ class WC_Edge_Webhook_Handler
 	/**
 	 * The order bound to a demand.
 	 *
-	 * Demand ids are unique across both modes, so the id alone is the match.
+	 * New checkouts write dedicated Edge metadata before confirming the demand.
+	 * Orders created by older plugin versions only have WooCommerce's transaction
+	 * id, so keep that as a backwards-compatible fallback.
 	 *
 	 * @param  string  $demand_id
 	 * @return WC_Order|null
@@ -341,16 +423,40 @@ class WC_Edge_Webhook_Handler
 	{
 		// wc_get_orders() rather than a meta query of our own, so this works the
 		// same whether the store keeps orders in posts or in HPOS tables.
-		$orders = wc_get_orders(
+		$order = self::first_order_matching(
 			array(
-				'limit' => 1,
-				'status' => 'any',
 				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
 					array(
 						'key' => self::DEMAND_META,
 						'value' => $demand_id,
 					),
 				),
+			)
+		);
+
+		if ($order) {
+			return $order;
+		}
+
+		return self::first_order_matching(array('transaction_id' => $demand_id));
+	}
+
+	/**
+	 * Return the first Edge order matching some WooCommerce query arguments.
+	 *
+	 * @param  array  $query  Additional wc_get_orders() arguments.
+	 * @return WC_Order|null
+	 */
+	private static function first_order_matching(array $query)
+	{
+		$orders = wc_get_orders(
+			array_merge(
+				array(
+					'limit' => 1,
+					'status' => 'any',
+					'payment_method' => self::GATEWAY_ID,
+				),
+				$query
 			)
 		);
 
@@ -370,7 +476,7 @@ class WC_Edge_Webhook_Handler
 
 		$gateways = WC()->payment_gateways->payment_gateways();
 
-		return isset($gateways['edge']) ? $gateways['edge'] : null;
+		return isset($gateways[self::GATEWAY_ID]) ? $gateways[self::GATEWAY_ID] : null;
 	}
 
 	/**

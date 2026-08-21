@@ -66,6 +66,50 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     add_action('wp_ajax_nopriv_edge_create_payment_demand', array($this, 'create_payment_demand'));
     add_action('wp_ajax_edge_prepare_payment_demand', array($this, 'prepare_payment_demand'));
     add_action('wp_ajax_nopriv_edge_prepare_payment_demand', array($this, 'prepare_payment_demand'));
+    add_filter('woocommerce_settings_api_sanitized_fields_' . $this->id, array($this, 'drop_display_only_settings'));
+  }
+
+  /**
+   * The mode the gateway is currently transacting in.
+   *
+   * @return string Either 'sandbox' or 'live'.
+   */
+  public function get_mode()
+  {
+    return $this->testmode ? 'sandbox' : 'live';
+  }
+
+  /**
+   * Get the secret key for a mode.
+   *
+   * A webhook can arrive after the gateway mode has changed, so it must use the
+   * mode saved on the order instead of assuming the gateway's current mode.
+   *
+   * @param string $mode Either 'sandbox', 'live', or empty for the current mode.
+   * @return string
+   */
+  public function get_secret_key($mode = '')
+  {
+    if ('' === $mode) {
+      $mode = $this->get_mode();
+    }
+
+    return 'live' === $mode
+      ? $this->get_option('private_key')
+      : $this->get_option('test_private_key');
+  }
+
+  /**
+   * Do not persist settings that are generated for display only.
+   *
+   * @param array $settings Sanitized gateway settings.
+   * @return array
+   */
+  public function drop_display_only_settings($settings)
+  {
+    unset($settings['webhook_url']);
+
+    return $settings;
   }
 
   /**
@@ -118,6 +162,11 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       'private_key' => array(
         'title' => 'Live Private Key',
         'type' => 'password'
+      ),
+      'webhook_url' => array(
+        'title' => __('Webhook URL', 'edge-gateway'),
+        'type' => 'edge_webhook_url',
+        'description' => __('Create a webhook in your Edge dashboard pointing at this URL, subscribed to <code>transaction.payment_demands.succeeded</code> and <code>transaction.payment_demands.failed</code>. Orders are placed on hold at checkout and stay there until Edge reports the outcome here.', 'edge-gateway'),
       )
     );
   }
@@ -294,7 +343,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       wp_send_json_success(array('payment_demand_id' => $stored_demand['payment_demand_id']));
     }
 
-    \Edge\Auth::setApiKey($this->private_key);
+    \Edge\Auth::setApiKey($this->get_secret_key());
 
     try {
       $demand = \Edge\Client::create(
@@ -390,7 +439,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       wp_send_json_success();
     }
 
-    \Edge\Auth::setApiKey($this->private_key);
+    \Edge\Auth::setApiKey($this->get_secret_key());
 
     try {
       $relationships = $this->create_checkout_relationships($billing, $shipping);
@@ -522,7 +571,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       throw new Exception(__('Invalid Edge payment reference.', 'edge-gateway'));
     }
 
-    \Edge\Auth::setApiKey($this->private_key);
+    \Edge\Auth::setApiKey($this->get_secret_key());
 
     try {
       Edge\Client::update(
@@ -541,6 +590,19 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           ),
         )
       );
+
+      // Bind and save the order before confirming the demand. Confirmation can
+      // dispatch a webhook immediately, and that delivery must be able to find
+      // the order before it attempts to apply the payment state.
+      $order->set_transaction_id($payment_demand_id);
+      $order->update_meta_data(WC_Edge_Webhook_Handler::DEMAND_META, $payment_demand_id);
+      $order->update_meta_data(WC_Edge_Webhook_Handler::MODE_META, $this->get_mode());
+      $order->update_status(
+        'on-hold',
+        __('Awaiting confirmation from Edge. The order will be marked paid when Edge reports that the payment succeeded.', 'edge-gateway')
+      );
+      $order->save();
+
       Edge\Client::update(
         'v2/payment_demands/' . rawurlencode($payment_demand_id) . '/confirm',
         array(
@@ -569,37 +631,16 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       throw new Exception($message);
     }
 
-    $payment_result = "pending";
-
-    $max_poll_attempts = 16;
-
-    for ($i = 0; $i < $max_poll_attempts; $i++) {
-      $response = Edge\Client::get('v2/payment_demands/' . rawurlencode($payment_demand_id));
-      if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
-        $payment_result = $response->data->attributes->processor_state;
-        break;
-      }
-
-      if ($i < $max_poll_attempts - 1) {
-        sleep(2);
-      }
-    }
-
-    $order->set_transaction_id($payment_demand_id);
-
-    if ('succeeded' === $payment_result) {
-      $order->payment_complete();
+    if (WC()->cart) {
       WC()->cart->empty_cart();
-      WC()->session->__unset('edge_payment_demand');
-
-      return array(
-        'result' => 'success',
-        'redirect' => $this->get_return_url($order)
-      );
-    } else {
-      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway');
-      throw new Exception($message);
     }
+
+    WC()->session->__unset('edge_payment_demand');
+
+    return array(
+      'result' => 'success',
+      'redirect' => $this->get_return_url($order)
+    );
   }
 
   /**
