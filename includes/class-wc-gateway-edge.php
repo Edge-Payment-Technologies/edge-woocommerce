@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.7
+ * @version  1.0.15
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
@@ -209,18 +209,64 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
   public function getEdgeErrorMessage(Exception $e)
   {
-    if ($e instanceof \Edge\Exception) {
-      $message = sanitize_text_field($e->getMessage());
+    $decoded = json_decode($e->getMessage(), true);
 
-      return $message
-        ? $message
-        : __('Edge Payments could not process the request.', 'edge-gateway');
+    if (isset($decoded['errors'][0]) && is_array($decoded['errors'][0])) {
+      $error = $decoded['errors'][0];
+
+      if (isset($error['detail']) && is_string($error['detail'])) {
+        return sanitize_text_field($error['detail']);
+      }
+
+      if (isset($error['title']) && is_string($error['title'])) {
+        return sanitize_text_field($error['title']);
+      }
     }
 
-    $decoded = json_decode($e->getMessage(), true);
-    return isset($decoded['errors'][0]['detail']) && is_string($decoded['errors'][0]['detail'])
-      ? sanitize_text_field($decoded['errors'][0]['detail'])
+    $message = sanitize_text_field($e->getMessage());
+
+    return $message
+      ? $message
       : __('Edge Payments could not process the request.', 'edge-gateway');
+  }
+
+  /**
+   * Build safe diagnostic context for an Edge API failure.
+   *
+   * @param Exception $e       The exception being logged.
+   * @param array     $context Additional log context.
+   * @return array
+   */
+  public function getEdgeLogContext(Exception $e, $context = array())
+  {
+    $context = array_merge(array('source' => 'edge-woocommerce'), $context);
+
+    if (!($e instanceof \Edge\Exception)) {
+      return $context;
+    }
+
+    $status_code = method_exists($e, 'getStatusCode')
+      ? $e->getStatusCode()
+      : $e->getCode();
+    if ($status_code) {
+      $context['status_code'] = $status_code;
+    }
+
+    $request = method_exists($e, 'getRequest') ? $e->getRequest() : null;
+
+    if ($request === null) {
+      $previous = $e->getPrevious();
+      $request = $previous && method_exists($previous, 'getRequest')
+        ? $previous->getRequest()
+        : null;
+    }
+
+    if ($request !== null) {
+      $context['request_method'] = sanitize_text_field($request->getMethod());
+      $context['request_path'] = sanitize_text_field($request->getUri()->getPath());
+    }
+
+    return $context;
   }
 
   /**
@@ -252,7 +298,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     try {
       $demand = \Edge\Client::create(
-        'payment_demands',
+        'v2/payment_demands',
         array(
           'data' => array(
             'type' => 'payment_demands',
@@ -269,11 +315,11 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     } catch (Exception $e) {
       wc_get_logger()->error(
         'Unable to create an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
-        array('source' => 'edge-woocommerce')
+        $this->getEdgeLogContext($e)
       );
 
       wp_send_json_error(
-        array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
+        array('message' => __('Unable to create the payment demand: ' . $this->getEdgeErrorMessage($e), 'edge-gateway')),
         502
       );
     }
@@ -282,7 +328,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     if (!$payment_demand_id) {
       wp_send_json_error(
-        array('message' => __('Unable to initialize Edge Payments. Please try again.', 'edge-gateway')),
+        array('message' => __('No payment demand id found, this shouldn\'t happen.', 'edge-gateway')),
         502
       );
     }
@@ -350,7 +396,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       $relationships = $this->create_checkout_relationships($billing, $shipping);
 
       \Edge\Client::update(
-        'payment_demands/' . rawurlencode($payment_demand_id),
+        'v2/payment_demands/' . rawurlencode($payment_demand_id),
         array(
           'data' => array(
             'id' => $payment_demand_id,
@@ -362,7 +408,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     } catch (Exception $e) {
       wc_get_logger()->error(
         'Unable to prepare an Edge payment demand: ' . $this->getEdgeErrorMessage($e),
-        array('source' => 'edge-woocommerce')
+        $this->getEdgeLogContext($e)
       );
 
       wp_send_json_error(
@@ -387,13 +433,13 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
    */
   private function create_checkout_relationships($billing, $shipping)
   {
-    $customers = \Edge\Client::get('customers', array('filter' => array('email' => $billing['email'])));
+    $customers = \Edge\Client::get('v2/customers', array('filter' => array('email' => $billing['email'])));
 
     if (!empty($customers->data[0]->id)) {
       $customer_id = $customers->data[0]->id;
     } else {
       $customer = \Edge\Client::create(
-        'customers',
+        'v2/customers',
         array(
           'data' => array(
             'type' => 'customers',
@@ -434,7 +480,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $country = isset($address['country']) ? $address['country'] : '';
 
     return \Edge\Client::create(
-      'consumer_addresses',
+      'v2/consumer_addresses',
       array(
         'data' => array(
           'type' => 'consumer_addresses',
@@ -480,7 +526,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     try {
       Edge\Client::update(
-        'payment_demands/' . rawurlencode($payment_demand_id),
+        'v2/payment_demands/' . rawurlencode($payment_demand_id),
         array(
           'data' => array(
             'id' => $payment_demand_id,
@@ -495,18 +541,25 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           ),
         )
       );
-      Edge\Client::confirm('payment_demands', $payment_demand_id);
+      Edge\Client::update(
+        'v2/payment_demands/' . rawurlencode($payment_demand_id) . '/confirm',
+        array(
+          'data' => array(
+            'id' => $payment_demand_id,
+            'type' => 'payment_demands',
+            'attributes' => (object) array(),
+          ),
+        )
+      );
     } catch (Exception $e) {
       $message = $this->getEdgeErrorMessage($e);
-      $context = array(
-        'source' => 'edge-woocommerce',
-        'order_id' => $order_id,
-        'payment_demand_id' => $payment_demand_id,
+      $context = $this->getEdgeLogContext(
+        $e,
+        array(
+          'order_id' => $order_id,
+          'payment_demand_id' => $payment_demand_id,
+        )
       );
-
-      if ($e instanceof \Edge\Exception) {
-        $context['status_code'] = $e->getStatusCode();
-      }
 
       wc_get_logger()->error(
         'Unable to confirm an Edge payment demand: ' . $message,
@@ -521,7 +574,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $max_poll_attempts = 16;
 
     for ($i = 0; $i < $max_poll_attempts; $i++) {
-      $response = Edge\Client::get('payment_demands/' . rawurlencode($payment_demand_id));
+      $response = Edge\Client::get('v2/payment_demands/' . rawurlencode($payment_demand_id));
       if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
         $payment_result = $response->data->attributes->processor_state;
         break;
