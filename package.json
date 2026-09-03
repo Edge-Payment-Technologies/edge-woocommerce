@@ -18,6 +18,7 @@
 	],
 	"dependencies": {
 		"@wordpress/element": "^8.5.0",
+		"@wordpress/html-entities": "^4.54.0",
 		"@wordpress/i18n": "^6.26.0"
 	},
 	"devDependencies": {

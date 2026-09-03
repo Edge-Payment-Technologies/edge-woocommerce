@@ -34,7 +34,7 @@ Now, the Edge Gateway for WooCommerce is installed, activated, and ready to use 
 
 To build the js in this project, run:
 
-```
+```shell
 nvm use
 npm install
 npm run packages-update

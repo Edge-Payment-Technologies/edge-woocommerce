@@ -60,7 +60,7 @@ const ActivateEdgePayments = async () => {
 	}
 
 	edgePaymentDemandId = result.data.payment_demand_id;
-	edgeClient = new Edge( settings.publishable_key, {
+	edgeClient = new window.Edge( settings.publishable_key, {
 		formFactor: 'inputs',
 	} );
 

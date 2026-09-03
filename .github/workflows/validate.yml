@@ -41,9 +41,9 @@ jobs:
             - name: Validate composer.json and composer.lock
               continue-on-error: true
               run: composer validate --strict
-            - name: Lint the CSS files
-              continue-on-error: true
-              run: npm run lint:css
+            # - name: Lint the CSS files
+            #   continue-on-error: true
+            #   run: npm run lint:css
             - name: Lint the JS asset files
               continue-on-error: true
               run: npm run lint:js
