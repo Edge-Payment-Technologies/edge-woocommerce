@@ -64,6 +64,14 @@ class WC_Edge_Payments
     // Make the WC_Gateway_Edge class available.
     if (class_exists('WC_Payment_Gateway')) {
       require_once 'includes/class-wc-gateway-edge.php';
+
+      // WooCommerce saves the provisional refund before calling the gateway, but passes it
+      // only the order ID, amount, and reason. Capture the refund object so the gateway can
+      // (1) add its already-deducted amount back when validating the remaining balance, and
+      // (2) attach the Edge reference to that specific refund, which is what distinguishes a
+      // retry from a new partial refund. Register here, not in the gateway constructor:
+      // WooCommerce may instantiate the gateway only after this hook has fired.
+      add_action('woocommerce_create_refund', array('WC_Gateway_Edge', 'capture_refund_context'), 10, 2);
     }
   }
 
