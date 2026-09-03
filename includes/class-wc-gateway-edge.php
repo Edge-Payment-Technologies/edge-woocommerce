@@ -22,6 +22,24 @@ if (!defined('ABSPATH')) {
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
+  /** Order meta keys that together describe one in-flight Edge refund attempt. */
+  const REFUND_ATTEMPT_META = array(
+    '_edge_refund_idempotency_key',
+    '_edge_refund_amount_cents',
+    '_edge_refund_currency',
+    '_edge_refund_reason_note',
+    '_edge_refund_demand_id',
+    '_edge_refund_state',
+    '_edge_refund_completion_noted',
+    '_edge_refund_wc_id',
+  );
+
+  /** Seconds after which a refund lock left behind by a killed worker may be reclaimed. */
+  const REFUND_LOCK_TTL = 600;
+
+  /** Refund demand states Edge may report. */
+  const REFUND_STATES = array('pending', 'processing', 'succeeded', 'failed', 'errored');
+
   /** @var array Refund objects currently being created by WooCommerce. */
   private static $refund_context = array();
 
@@ -156,7 +174,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
    * @param array     $context Additional log context.
    * @return array
    */
-  public function getEdgeLogContext(Exception $e, $context = array())
+  public function getEdgeLogContext(Throwable $e, $context = array())
   {
     $context = array_merge(array('source' => 'edge-woocommerce'), $context);
 
@@ -536,17 +554,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       return false;
     }
 
-    $payment_demand_id = $order->get_transaction_id();
-    $order_total = wc_format_decimal($order->get_total(), 2);
-    $remaining_total = wc_format_decimal($order->get_remaining_refund_amount(), 2);
-    $private_key = $this->get_private_key($this->get_order_payment_mode($order));
-
-    return $this->supports('refunds')
-      && $payment_demand_id
-      && wp_is_uuid($payment_demand_id)
-      && 0 < (float) $order_total
-      && 0 < (float) $remaining_total
-      && '' !== $private_key;
+    return wp_is_uuid($order->get_transaction_id())
+      && 0 < (float) $order->get_total()
+      && 0 < (float) $order->get_remaining_refund_amount()
+      && '' !== $this->get_private_key($this->get_order_payment_mode($order));
   }
 
   /**
@@ -576,9 +587,8 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $refund = isset(self::$refund_context[$order_id]) ? self::$refund_context[$order_id] : null;
     unset(self::$refund_context[$order_id]);
 
-    // Options have a unique key in the database, unlike a read-then-write transient.
     $lock = '_edge_refund_lock_' . absint($order_id);
-    if (!add_option($lock, time(), '', false)) {
+    if (!$this->acquire_refund_lock($lock)) {
       return new WP_Error(
         'edge_refund_locked',
         __('Another Edge refund is being processed for this order. Please try again later. If this persists, contact support.', 'edge-gateway')
@@ -590,6 +600,32 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     } finally {
       delete_option($lock);
     }
+  }
+
+  /**
+   * Take the per-order refund lock.
+   *
+   * Options have a unique key in the database, so add_option() is atomic where a
+   * read-then-write transient is not. A worker killed mid-refund leaves its lock
+   * behind; reclaim it once it is far older than a full polling cycle.
+   *
+   * @param string $lock Option name.
+   * @return bool
+   */
+  private function acquire_refund_lock($lock)
+  {
+    if (add_option($lock, time(), '', false)) {
+      return true;
+    }
+
+    $locked_at = (int) get_option($lock);
+
+    if ($locked_at && time() - $locked_at > self::REFUND_LOCK_TTL) {
+      delete_option($lock);
+      return (bool) add_option($lock, time(), '', false);
+    }
+
+    return false;
   }
 
   /**
@@ -690,37 +726,31 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       in_array($order->get_meta('_edge_refund_state', true), array('failed', 'errored'), true)
     ) {
       // The previous attempt is accounted for, or definitively failed. Start a new one.
-      foreach (array('idempotency_key', 'reason_note', 'demand_id', 'state', 'completion_noted', 'amount_cents', 'currency', 'wc_id') as $field) {
-        $order->delete_meta_data('_edge_refund_' . $field);
+      foreach (self::REFUND_ATTEMPT_META as $meta_key) {
+        $order->delete_meta_data($meta_key);
       }
     }
 
+    // Edge rejects a replayed idempotency key whose amount, currency, or note differ, so an
+    // unresolved attempt can only be resumed with its original values.
     $idempotency_key = $order->get_meta('_edge_refund_idempotency_key', true);
     if ($idempotency_key) {
-      // Pre-partial-refund versions stored no amount and always requested the full total.
-      $attempt_cents = $order->meta_exists('_edge_refund_amount_cents')
-        ? (int) $order->get_meta('_edge_refund_amount_cents', true)
-        : (int) round((float) $order->get_total() * 100);
-      $attempt_currency = $order->get_meta('_edge_refund_currency', true);
-      if ($attempt_cents !== $amount_cents || ($attempt_currency && $attempt_currency !== $order->get_currency())) {
+      if (
+        (int) $order->get_meta('_edge_refund_amount_cents', true) !== $amount_cents ||
+        $order->get_meta('_edge_refund_currency', true) !== $order->get_currency()
+      ) {
         return new WP_Error(
           'edge_refund_unresolved',
           __('A previous Edge refund is unresolved. Retry its original amount before starting another refund.', 'edge-gateway')
         );
       }
-    }
-
-    if (!$idempotency_key) {
+      $reason_note = (string) $order->get_meta('_edge_refund_reason_note', true);
+    } else {
       $idempotency_key = wp_generate_uuid4();
+      $reason_note = $this->normalize_refund_reason($reason);
       $order->update_meta_data('_edge_refund_idempotency_key', $idempotency_key);
       $order->update_meta_data('_edge_refund_amount_cents', $amount_cents);
       $order->update_meta_data('_edge_refund_currency', $order->get_currency());
-    }
-
-    if ($order->meta_exists('_edge_refund_reason_note')) {
-      $reason_note = (string) $order->get_meta('_edge_refund_reason_note', true);
-    } else {
-      $reason_note = $this->normalize_refund_reason($reason);
       $order->update_meta_data('_edge_refund_reason_note', $reason_note);
     }
 
@@ -740,13 +770,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       $attributes = array(
         'reason' => 'custom',
         'idempotency_key' => $idempotency_key,
+        'amount_cents' => $amount_cents,
+        'amount_currency' => $order->get_currency(),
       );
-
-      // Preserve the original omitted-amount payload when replaying a legacy attempt.
-      if ($order->meta_exists('_edge_refund_amount_cents')) {
-        $attributes['amount_cents'] = $amount_cents;
-        $attributes['amount_currency'] = $order->get_currency();
-      }
 
       if ('' !== $reason_note) {
         $attributes['reason_note'] = $reason_note;
@@ -770,21 +796,12 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
             ),
           )
         );
-      } catch (Exception $e) {
-        return $this->refund_api_error(
-          $e,
-          $order_id,
-          $payment_demand_id,
-          '',
-          __('Unable to submit the Edge refund.', 'edge-gateway')
-        );
       } catch (Throwable $e) {
-        return $this->unexpected_refund_error(
+        return $this->refund_exception_error(
           $e,
+          __('Unable to submit the Edge refund.', 'edge-gateway'),
           $order_id,
-          $payment_demand_id,
-          '',
-          __('Unable to submit the Edge refund.', 'edge-gateway')
+          $payment_demand_id
         );
       }
 
@@ -792,8 +809,8 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         ? sanitize_text_field($refund_demand->data->id)
         : '';
 
-      if (!$refund_demand_id || !wp_is_uuid($refund_demand_id)) {
-        return $this->malformed_refund_error($order_id, $payment_demand_id, '');
+      if (!wp_is_uuid($refund_demand_id)) {
+        return $this->malformed_refund_error($order_id, $payment_demand_id);
       }
 
       $order->update_meta_data('_edge_refund_demand_id', $refund_demand_id);
@@ -808,21 +825,13 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         $refund_demand = \Edge\Client::get(
           'v2/refund_demands/' . rawurlencode($refund_demand_id)
         );
-      } catch (Exception $e) {
-        return $this->refund_api_error(
-          $e,
-          $order_id,
-          $payment_demand_id,
-          $refund_demand_id,
-          __('Unable to check the Edge refund.', 'edge-gateway')
-        );
       } catch (Throwable $e) {
-        return $this->unexpected_refund_error(
+        return $this->refund_exception_error(
           $e,
+          __('Unable to check the Edge refund.', 'edge-gateway'),
           $order_id,
           $payment_demand_id,
-          $refund_demand_id,
-          __('Unable to check the Edge refund.', 'edge-gateway')
+          $refund_demand_id
         );
       }
 
@@ -836,7 +845,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         !is_int($refund_demand->data->attributes->amount_cents) ||
         $refund_demand->data->attributes->amount_cents !== $amount_cents ||
         $refund_demand->data->attributes->amount_currency !== $order->get_currency() ||
-        !in_array($refund_state, array('pending', 'processing', 'succeeded', 'failed', 'errored'), true)
+        !in_array($refund_state, self::REFUND_STATES, true)
       ) {
         return $this->malformed_refund_error(
           $order_id,
@@ -856,9 +865,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           $refund->update_meta_data('_edge_refund_idempotency_key', $idempotency_key);
           $refund->save();
           $order->update_meta_data('_edge_refund_wc_id', $refund->get_id());
-          $order->save();
         }
         $this->record_refund_success($order, $refund_amount, $refund_demand_id);
+        $order->save();
         return true;
       }
 
@@ -943,63 +952,71 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
   }
 
   /**
-   * Log an Edge refund API exception and return a WooCommerce error.
+   * Log a failed Edge refund call and return a WooCommerce error.
    *
-   * @param Exception $exception         Edge API exception.
+   * Only the status code, request method, and path of an Edge API exception are
+   * logged; response bodies never are.
+   *
+   * @param Throwable $exception         Edge API, transport, or SDK failure.
+   * @param string    $summary           Safe error summary.
    * @param int       $order_id          WooCommerce order ID.
    * @param string    $payment_demand_id Edge payment demand ID.
-   * @param string    $refund_demand_id  Edge refund demand ID.
-   * @param string    $summary           Safe error summary.
+   * @param string    $refund_demand_id  Edge refund demand ID, if known.
    * @return WP_Error
    */
-  private function refund_api_error(
-    $exception,
-    $order_id,
-    $payment_demand_id,
-    $refund_demand_id,
-    $summary
-  ) {
-    $context = array(
-      'order_id' => $order_id,
-      'payment_demand_id' => $payment_demand_id,
-    );
+  private function refund_exception_error($exception, $summary, $order_id, $payment_demand_id, $refund_demand_id = '')
+  {
+    $context = $this->getEdgeLogContext($exception, array('exception' => get_class($exception)));
 
-    if ($refund_demand_id) {
-      $context['refund_demand_id'] = $refund_demand_id;
-    }
-
-    wc_get_logger()->error(
+    return $this->refund_error(
+      $exception instanceof \Edge\Exception ? 'edge_refund_api_error' : 'edge_refund_transport_error',
       $summary,
-      $this->getEdgeLogContext($exception, $context)
-    );
-
-    return new WP_Error(
-      'edge_refund_api_error',
-      $summary
+      $order_id,
+      $payment_demand_id,
+      $refund_demand_id,
+      $context
     );
   }
 
   /**
-   * Handle a transport or SDK failure that is not an Edge API exception.
+   * Return an error for an invalid refund response without logging response data.
    *
-   * @param Throwable $exception         Transport or SDK failure.
-   * @param int       $order_id          WooCommerce order ID.
-   * @param string    $payment_demand_id Edge payment demand ID.
-   * @param string    $refund_demand_id  Edge refund demand ID.
-   * @param string    $summary           Safe error summary.
+   * @param int    $order_id          WooCommerce order ID.
+   * @param string $payment_demand_id Edge payment demand ID.
+   * @param string $refund_demand_id  Edge refund demand ID, if known.
    * @return WP_Error
    */
-  private function unexpected_refund_error(
-    $exception,
-    $order_id,
-    $payment_demand_id,
-    $refund_demand_id,
-    $summary
-  ) {
-    $context = array(
-      'source' => 'edge-woocommerce',
-      'order_id' => $order_id,
-      'payment_demand_id' => $payment_demand_id,
+  private function malformed_refund_error($order_id, $payment_demand_id, $refund_demand_id = '')
+  {
+    return $this->refund_error(
+      'edge_refund_invalid_response',
+      __('Edge Payments returned an invalid refund response.', 'edge-gateway'),
+      $order_id,
+      $payment_demand_id,
+      $refund_demand_id
+    );
+  }
+
+  /**
+   * Log a refund failure with its identifiers and return a WooCommerce error.
+   *
+   * @param string $code              WP_Error code.
+   * @param string $summary           Safe error summary, logged and shown to the admin.
+   * @param int    $order_id          WooCommerce order ID.
+   * @param string $payment_demand_id Edge payment demand ID.
+   * @param string $refund_demand_id  Edge refund demand ID, if known.
+   * @param array  $context           Additional safe log context.
+   * @return WP_Error
+   */
+  private function refund_error($code, $summary, $order_id, $payment_demand_id, $refund_demand_id = '', $context = array())
+  {
+    $context = array_merge(
+      array(
+        'source' => 'edge-woocommerce',
+        'order_id' => $order_id,
+        'payment_demand_id' => $payment_demand_id,
+      ),
+      $context
     );
 
     if ($refund_demand_id) {
@@ -1008,39 +1025,13 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     wc_get_logger()->error($summary, $context);
 
-    return new WP_Error('edge_refund_transport_error', $summary);
-  }
-
-  /**
-   * Return an error for an invalid refund response without logging response data.
-   *
-   * @param int    $order_id          WooCommerce order ID.
-   * @param string $payment_demand_id Edge payment demand ID.
-   * @param string $refund_demand_id  Edge refund demand ID.
-   * @return WP_Error
-   */
-  private function malformed_refund_error($order_id, $payment_demand_id, $refund_demand_id)
-  {
-    $context = array(
-      'source' => 'edge-woocommerce',
-      'order_id' => $order_id,
-      'payment_demand_id' => $payment_demand_id,
-    );
-
-    if ($refund_demand_id) {
-      $context['refund_demand_id'] = $refund_demand_id;
-    }
-
-    wc_get_logger()->error('Edge returned an invalid refund response.', $context);
-
-    return new WP_Error(
-      'edge_refund_invalid_response',
-      __('Edge Payments returned an invalid refund response.', 'edge-gateway')
-    );
+    return new WP_Error($code, $summary);
   }
 
   /**
    * Add a single private order note for a completed Edge refund.
+   *
+   * The caller saves the order.
    *
    * @param WC_Order $order            WooCommerce order.
    * @param string   $amount           Refunded amount.
@@ -1066,7 +1057,6 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       )
     );
     $order->update_meta_data('_edge_refund_completion_noted', 'yes');
-    $order->save();
   }
 
   /**
