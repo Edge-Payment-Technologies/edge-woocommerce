@@ -5,7 +5,7 @@ require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php'
 
 /**
  * WC_Gateway_Edge class
- * @package  WooCommerce Edge Payments Gateway
+ * @package  Edge Gateway for WooCommerce
  * @since    1.0.0
  */
 
@@ -55,17 +55,18 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $this->supports = array(
       'products',
       'refunds',
-      /*'payment_subscriptions',
-                        'subscription_cancellation',
-                        'subscription_suspension',
-                        'subscription_reactivation',
-                        'subscription_amount_changes',
-                        'subscription_date_changes',
-                        'multiple_subscriptions'*/
+      // 'subscriptions',
+      // 'subscription_cancellation',
+      // 'subscription_reactivation',
+      // 'subscription_suspension',
+      // 'subscription_amount_changes',
+      // 'subscription_payment_method_change',
+      // 'subscription_date_changes',
+      // 'pre-orders'
     );
 
-    $this->method_title = _x('Edge Payments', 'Edge payments method', 'edge-gateway');
-    $this->method_description = __('Allows edge payments.', 'edge-gateway');
+    $this->method_title = _x('Edge Payments', 'Edge payments method', 'edge-gateway-for-woocommerce');
+    $this->method_description = __('Allows edge payments.', 'edge-gateway-for-woocommerce');
 
     // Load the settings.
     $this->init_form_fields();
@@ -164,7 +165,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     return $message
       ? $message
-      : __('Edge Payments could not process the request.', 'edge-gateway');
+      : __('Edge Payments could not process the request.', 'edge-gateway-for-woocommerce');
   }
 
   /**
@@ -215,7 +216,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     if (!$this->is_available() || !WC()->cart || WC()->cart->is_empty()) {
       wp_send_json_error(
-        array('message' => __('Edge Payments is not available for this order.', 'edge-gateway')),
+        array('message' => __('Edge Payments is not available for this order.', 'edge-gateway-for-woocommerce')),
         400
       );
     }
@@ -243,7 +244,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
               'amount_cents' => (int) round((float) WC()->cart->get_total('edit') * 100),
               'amount_currency' => get_woocommerce_currency(),
               'idempotency_key' => wp_generate_uuid4(),
-              'description' => __('WooCommerce checkout', 'edge-gateway'),
+              'description' => __('WooCommerce checkout', 'edge-gateway-for-woocommerce'),
               // payment indicator
             ),
           ),
@@ -256,7 +257,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       );
 
       wp_send_json_error(
-        array('message' => __('Unable to create the payment demand: ' . $this->getEdgeErrorMessage($e), 'edge-gateway')),
+        array('message' => __('Unable to create the payment demand: ' . $this->getEdgeErrorMessage($e), 'edge-gateway-for-woocommerce')),
         502
       );
     }
@@ -265,7 +266,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     if (!$payment_demand_id) {
       wp_send_json_error(
-        array('message' => __('No payment demand id found, this shouldn\'t happen.', 'edge-gateway')),
+        array('message' => __('No payment demand id found, this shouldn\'t happen.', 'edge-gateway-for-woocommerce')),
         502
       );
     }
@@ -300,7 +301,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       !isset($stored_demand['payment_demand_id']) ||
       !hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
     ) {
-      wp_send_json_error(array('message' => __('Invalid Edge payment reference.', 'edge-gateway')), 400);
+      wp_send_json_error(array('message' => __('Invalid Edge payment reference.', 'edge-gateway-for-woocommerce')), 400);
     }
 
     $billing = isset($_POST['billing_address'])
@@ -311,7 +312,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       : array();
 
     if (!is_array($billing) || empty($billing['email'])) {
-      wp_send_json_error(array('message' => __('Please enter a valid billing address.', 'edge-gateway')), 400);
+      wp_send_json_error(array('message' => __('Please enter a valid billing address.', 'edge-gateway-for-woocommerce')), 400);
     }
 
     $billing = wc_clean($billing);
@@ -349,7 +350,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       );
 
       wp_send_json_error(
-        array('message' => __('Unable to prepare Edge Payments. Please try again.', 'edge-gateway')),
+        array('message' => __('Unable to prepare Edge Payments. Please try again.', 'edge-gateway-for-woocommerce')),
         502
       );
     }
@@ -456,7 +457,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       empty($stored_demand['relationships']) ||
       !hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
     ) {
-      throw new Exception(__('Invalid Edge payment reference.', 'edge-gateway'));
+      throw new Exception(__('Invalid Edge payment reference.', 'edge-gateway-for-woocommerce'));
     }
 
     \Edge\Auth::setApiKey($this->private_key);
@@ -535,7 +536,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         'redirect' => $this->get_return_url($order)
       );
     } else {
-      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway');
+      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce');
       throw new Exception($message);
     }
   }
@@ -1073,7 +1074,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if ('success' === $payment_result) {
       $order->payment_complete();
     } else {
-      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway');
+      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce');
       throw new Exception($message);
     }
   }
