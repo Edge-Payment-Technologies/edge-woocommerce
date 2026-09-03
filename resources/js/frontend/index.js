@@ -6,7 +6,7 @@ import { createElement, Fragment, useEffect } from '@wordpress/element';
 
 const settings = getSetting( 'edge_data', {} );
 
-const defaultLabel = __( 'Edge Payments', 'woocommerce-edge-gateway' );
+const defaultLabel = __( 'Edge Payments', 'edge-gateway-for-woocommerce' );
 
 const label = decodeEntities( settings.title ) || defaultLabel;
 

@@ -70,7 +70,7 @@ final class WC_Gateway_Edge_Blocks_Support extends AbstractPaymentMethodType
     );
 
     if (function_exists('wp_set_script_translations')) {
-      wp_set_script_translations('wc-edge-payments-blocks', 'woocommerce-edge-gateway', WC_Edge_Payments::plugin_abspath() . 'languages/');
+      wp_set_script_translations('wc-edge-payments-blocks', 'edge-gateway-for-woocommerce', WC_Edge_Payments::plugin_abspath() . 'languages/');
     }
 
     return ['wc-edge-payments-blocks'];

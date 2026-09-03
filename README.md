@@ -1,5 +1,15 @@
 # Edge Gateway for WooCommerce
 
+This is the official Wordpress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
+
+## Dependencies
+
+- WooCommerce
+
+## Version Support Policy
+
+We adopt the L-2 version support policy for WordPress core strictly, and a loose L-2 policy for WooCommerce.
+
 ## Installation
 
 To install the Edge Gateway for WooCommerce plugin, follow these steps:

@@ -1,15 +1,15 @@
 <?php
 
 /**
- * Plugin Name: Edge Payments Gateway
+ * Plugin Name: Edge Gateway for WooCommerce
  * Plugin URI: https://github.com/Edge-Payment-Technologies/edge-woocommerce
- * Description: Adds the Edge Payments gateway to your WooCommerce website.
+ * Description: This is the official Wordpress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
  * Version: 1.0.15
  *
  * Author: Edge Payments
  * Author URI: https://www.tryedge.io
  *
- * Text Domain: woocommerce-edge-gateway
+ * Text Domain: edge-gateway-for-woocommerce
  * Domain Path: /i18n/languages/
  */
 
