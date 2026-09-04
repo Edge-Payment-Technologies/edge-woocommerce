@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.16
+ * @version  1.0.17
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
@@ -592,7 +592,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if (!$this->acquire_refund_lock($lock)) {
       return new WP_Error(
         'edge_refund_locked',
-        __('Another Edge refund is being processed for this order. Please try again later. If this persists, contact support.', 'edge-gateway')
+        __('Another Edge refund is being processed for this order. Please try again later. If this persists, contact support.', 'edge-gateway-for-woocommerce')
       );
     }
 
@@ -645,7 +645,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if (!($order instanceof WC_Order) || $this->id !== $order->get_payment_method()) {
       return new WP_Error(
         'edge_refund_invalid_order',
-        __('Edge Payments could not find a valid order to refund.', 'edge-gateway')
+        __('Edge Payments could not find a valid order to refund.', 'edge-gateway-for-woocommerce')
       );
     }
 
@@ -662,7 +662,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       (float) $refund_amount !== (float) wc_format_decimal($refund_amount, 2) ||
       (float) $refund_amount > PHP_INT_MAX / 100
     ) {
-      return new WP_Error('edge_refund_invalid_amount', __('Enter a valid refund amount in whole cents.', 'edge-gateway'));
+      return new WP_Error('edge_refund_invalid_amount', __('Enter a valid refund amount in whole cents.', 'edge-gateway-for-woocommerce'));
     }
 
     $refund_amount = wc_format_decimal($refund_amount, 2);
@@ -678,7 +678,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if (!$payment_demand_id || !wp_is_uuid($payment_demand_id)) {
       return new WP_Error(
         'edge_refund_invalid_payment',
-        __('This order does not have a valid Edge payment reference.', 'edge-gateway')
+        __('This order does not have a valid Edge payment reference.', 'edge-gateway-for-woocommerce')
       );
     }
 
@@ -687,7 +687,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         $refund->get_parent_id() !== $order->get_id() || $refund->get_refunded_payment() ||
         $amount_cents !== (int) round((float) $refund->get_amount() * 100)
       ) {
-        return new WP_Error('edge_refund_invalid_amount', __('The WooCommerce refund does not match this request.', 'edge-gateway'));
+        return new WP_Error('edge_refund_invalid_amount', __('The WooCommerce refund does not match this request.', 'edge-gateway-for-woocommerce'));
       }
       $remaining_cents += $amount_cents;
     }
@@ -695,7 +695,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if ($amount_cents > $remaining_cents) {
       return new WP_Error(
         'edge_refund_invalid_amount',
-        __('The refund amount exceeds the remaining refundable order total.', 'edge-gateway')
+        __('The refund amount exceeds the remaining refundable order total.', 'edge-gateway-for-woocommerce')
       );
     }
 
@@ -705,7 +705,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if ('' === $private_key) {
       return new WP_Error(
         'edge_refund_missing_key',
-        __('The Edge Payments API key for this order is not configured.', 'edge-gateway')
+        __('The Edge Payments API key for this order is not configured.', 'edge-gateway-for-woocommerce')
       );
     }
 
@@ -716,7 +716,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       // Do not attach the same Edge payment to a second provisional refund.
       return new WP_Error(
         'edge_refund_reconciliation_required',
-        __('The previous Edge refund is awaiting WooCommerce confirmation. Please wait or contact support to reconcile it.', 'edge-gateway')
+        __('The previous Edge refund is awaiting WooCommerce confirmation. Please wait or contact support to reconcile it.', 'edge-gateway-for-woocommerce')
       );
     }
     if (
@@ -742,7 +742,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       ) {
         return new WP_Error(
           'edge_refund_unresolved',
-          __('A previous Edge refund is unresolved. Retry its original amount before starting another refund.', 'edge-gateway')
+          __('A previous Edge refund is unresolved. Retry its original amount before starting another refund.', 'edge-gateway-for-woocommerce')
         );
       }
       $reason_note = (string) $order->get_meta('_edge_refund_reason_note', true);
@@ -763,7 +763,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if ($refund_demand_id && !wp_is_uuid($refund_demand_id)) {
       return new WP_Error(
         'edge_refund_invalid_reference',
-        __('The stored Edge refund reference is invalid.', 'edge-gateway')
+        __('The stored Edge refund reference is invalid.', 'edge-gateway-for-woocommerce')
       );
     }
 
@@ -800,7 +800,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       } catch (Throwable $e) {
         return $this->refund_exception_error(
           $e,
-          __('Unable to submit the Edge refund.', 'edge-gateway'),
+          __('Unable to submit the Edge refund.', 'edge-gateway-for-woocommerce'),
           $order_id,
           $payment_demand_id
         );
@@ -829,7 +829,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       } catch (Throwable $e) {
         return $this->refund_exception_error(
           $e,
-          __('Unable to check the Edge refund.', 'edge-gateway'),
+          __('Unable to check the Edge refund.', 'edge-gateway-for-woocommerce'),
           $order_id,
           $payment_demand_id,
           $refund_demand_id
@@ -886,7 +886,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
         return new WP_Error(
           'edge_refund_failed',
-          __('Edge Payments could not complete the refund.', 'edge-gateway')
+          __('Edge Payments could not complete the refund.', 'edge-gateway-for-woocommerce')
         );
       }
 
@@ -897,7 +897,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     return new WP_Error(
       'edge_refund_pending',
-      __('The Edge refund is still processing. Please try again later to check its status.', 'edge-gateway')
+      __('The Edge refund is still processing. Please try again later to check its status.', 'edge-gateway-for-woocommerce')
     );
   }
 
@@ -991,7 +991,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
   {
     return $this->refund_error(
       'edge_refund_invalid_response',
-      __('Edge Payments returned an invalid refund response.', 'edge-gateway'),
+      __('Edge Payments returned an invalid refund response.', 'edge-gateway-for-woocommerce'),
       $order_id,
       $payment_demand_id,
       $refund_demand_id
@@ -1052,7 +1052,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     $order->add_order_note(
       sprintf(
         /* translators: 1: Refunded amount, 2: Edge refund demand ID. */
-        __('Edge refund of %1$s succeeded. Refund Demand ID: %2$s', 'edge-gateway'),
+        __('Edge refund of %1$s succeeded. Refund Demand ID: %2$s', 'edge-gateway-for-woocommerce'),
         $formatted_amount,
         $refund_demand_id
       )
