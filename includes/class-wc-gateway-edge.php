@@ -257,7 +257,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       );
 
       wp_send_json_error(
-        array('message' => __('Unable to create the payment demand: ' . $this->getEdgeErrorMessage($e), 'edge-gateway-for-woocommerce')),
+        array('message' => __('Unable to create the payment demand. Please try again.', 'edge-gateway')),
         502
       );
     }
@@ -305,10 +305,10 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     }
 
     $billing = isset($_POST['billing_address'])
-      ? json_decode(wp_unslash($_POST['billing_address']), true)
+      ? json_decode(wp_unslash($_POST['billing_address']), true) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JSON is recursively sanitized below.
       : array();
     $shipping = isset($_POST['shipping_address'])
-      ? json_decode(wp_unslash($_POST['shipping_address']), true)
+      ? json_decode(wp_unslash($_POST['shipping_address']), true) // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JSON is recursively sanitized below.
       : array();
 
     if (!is_array($billing) || empty($billing['email'])) {
@@ -444,9 +444,14 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
   public function process_payment($order_id)
   {
     $order = wc_get_order($order_id);
+
+    // WooCommerce authenticates the checkout request before invoking the gateway.
+    // phpcs:disable WordPress.Security.NonceVerification.Missing
     $payment_demand_id = isset($_POST['payment_demand_id'])
       ? sanitize_text_field(wp_unslash($_POST['payment_demand_id']))
       : '';
+    // phpcs:enable WordPress.Security.NonceVerification.Missing
+
     $stored_demand = WC()->session->get('edge_payment_demand');
 
     if (
@@ -457,7 +462,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       empty($stored_demand['relationships']) ||
       !hash_equals((string) $stored_demand['payment_demand_id'], $payment_demand_id)
     ) {
-      throw new Exception(__('Invalid Edge payment reference.', 'edge-gateway-for-woocommerce'));
+      throw new Exception(esc_html__('Invalid Edge payment reference.', 'edge-gateway-for-woocommerce'));
     }
 
     \Edge\Auth::setApiKey($this->private_key);
@@ -504,7 +509,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         $context
       );
 
-      throw new Exception($message);
+      throw new Exception(
+        esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
+      );
     }
 
     $payment_result = "pending";
@@ -536,8 +543,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         'redirect' => $this->get_return_url($order)
       );
     } else {
-      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce');
-      throw new Exception($message);
+      throw new Exception(
+        esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
+      );
     }
   }
 
@@ -1074,8 +1082,9 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
     if ('success' === $payment_result) {
       $order->payment_complete();
     } else {
-      $message = __('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce');
-      throw new Exception($message);
+      throw new Exception(
+        esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
+      );
     }
   }
 }
