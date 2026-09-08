@@ -39,7 +39,7 @@ jobs:
             - name: Build a plugin zip
               run: npm run plugin-zip
             - name: Upload release asset
-              uses: softprops/action-gh-release@v3.0.2
+              uses: softprops/action-gh-release@v3.0.3
               env:
                   # Note, this is an exception to action secrets: GH_TOKEN is always available and provides access to
                   # the current repository this action runs in.
