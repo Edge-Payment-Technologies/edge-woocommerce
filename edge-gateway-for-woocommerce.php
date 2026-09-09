@@ -73,6 +73,13 @@ class WC_Edge_Payments
       // retry from a new partial refund. Register here, not in the gateway constructor:
       // WooCommerce may instantiate the gateway only after this hook has fired.
       add_action('woocommerce_create_refund', array('WC_Gateway_Edge', 'capture_refund_context'), 10, 2);
+
+      // Payments settle asynchronously: checkout leaves the order on hold and Edge
+      // reports the outcome here. Registered from the bootstrap so the route exists
+      // whether or not anything has instantiated the gateway yet.
+      require_once 'includes/class-wc-edge-webhook-controller.php';
+
+      add_action('rest_api_init', array('WC_Edge_Webhook_Controller', 'register'));
     }
   }
 

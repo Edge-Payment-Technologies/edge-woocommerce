@@ -140,6 +140,22 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       'private_key' => array(
         'title' => 'Live Private Key',
         'type' => 'password'
+      ),
+      'webhook_url' => array(
+        'title' => __('Webhooks', 'edge-gateway-for-woocommerce'),
+        // A 'title' field renders read-only and stores nothing, which is what the
+        // URL wants: it follows the site address and is shown only to be copied.
+        'type' => 'title',
+        'description' => sprintf(
+          /* translators: %s: the URL Edge should deliver webhooks to. */
+          __('Orders are placed on hold at checkout and stay there until Edge reports the outcome. In your Edge dashboard, create a webhook subscription pointing at <code>%s</code>, subscribed to <code>transaction.payment_demands.succeeded</code> and <code>transaction.payment_demands.failed</code>, then paste its secret key below.', 'edge-gateway-for-woocommerce'),
+          esc_url(WC_Edge_Webhook_Controller::callback_url())
+        ),
+      ),
+      'webhook_secret' => array(
+        'title' => __('Webhook Secret', 'edge-gateway-for-woocommerce'),
+        'type' => 'password',
+        'description' => __('The secret key Edge returned when the webhook subscription was created. Without it, deliveries are rejected and orders stay on hold.', 'edge-gateway-for-woocommerce'),
       )
     );
   }
@@ -484,6 +500,17 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
           ),
         )
       );
+      // Bind the order to the demand and save it before confirming. Confirmation
+      // can dispatch the outcome webhook immediately, and that delivery has to be
+      // able to find this order and read the mode off it to pick the right key.
+      $order->set_transaction_id($payment_demand_id);
+      $order->update_meta_data('_edge_payment_mode', $this->testmode ? 'sandbox' : 'live');
+      $order->update_status(
+        'on-hold',
+        __('Awaiting payment confirmation from Edge.', 'edge-gateway-for-woocommerce')
+      );
+      $order->save();
+
       Edge\Client::update(
         'v2/payment_demands/' . rawurlencode($payment_demand_id) . '/confirm',
         array(
@@ -509,44 +536,28 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         $context
       );
 
+      // The demand was never confirmed, so no webhook is coming. Without this the
+      // order would sit on hold waiting for an outcome that cannot arrive.
+      $order->update_status(
+        'failed',
+        __('Edge could not accept this payment.', 'edge-gateway-for-woocommerce')
+      );
+
       throw new Exception(
         esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
       );
     }
 
-    $payment_result = "pending";
+    // The demand is confirmed but not yet settled. Rather than hold the checkout
+    // request open polling for an outcome, the order stays on hold until Edge
+    // reports one to WC_Edge_Webhook_Controller.
+    WC()->cart->empty_cart();
+    WC()->session->__unset('edge_payment_demand');
 
-    $max_poll_attempts = 16;
-
-    for ($i = 0; $i < $max_poll_attempts; $i++) {
-      $response = Edge\Client::get('v2/payment_demands/' . rawurlencode($payment_demand_id));
-      if (in_array($response->data->attributes->processor_state, ['succeeded', 'failed'])) {
-        $payment_result = $response->data->attributes->processor_state;
-        break;
-      }
-
-      if ($i < $max_poll_attempts - 1) {
-        sleep(2);
-      }
-    }
-
-    $order->set_transaction_id($payment_demand_id);
-
-    if ('succeeded' === $payment_result) {
-      $order->update_meta_data('_edge_payment_mode', $this->testmode ? 'sandbox' : 'live');
-      $order->payment_complete();
-      WC()->cart->empty_cart();
-      WC()->session->__unset('edge_payment_demand');
-
-      return array(
-        'result' => 'success',
-        'redirect' => $this->get_return_url($order)
-      );
-    } else {
-      throw new Exception(
-        esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
-      );
-    }
+    return array(
+      'result' => 'success',
+      'redirect' => $this->get_return_url($order)
+    );
   }
 
   /**
@@ -917,7 +928,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
    * @param WC_Order $order Order object.
    * @return string
    */
-  private function get_order_payment_mode($order)
+  public function get_order_payment_mode($order)
   {
     $payment_mode = sanitize_key($order->get_meta('_edge_payment_mode', true));
 
@@ -934,7 +945,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
    * @param string $payment_mode Edge payment mode.
    * @return string
    */
-  private function get_private_key($payment_mode)
+  public function get_private_key($payment_mode)
   {
     $private_key = 'sandbox' === $payment_mode
       ? $this->get_option('test_private_key')
