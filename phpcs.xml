@@ -63,4 +63,11 @@
         <exclude name="Squiz.Classes.ValidClassName.NotCamelCaps" />
     </rule>
 
+  <!-- This codebase indents with two spaces; the WordPress standards assume tabs
+       and report every indented line as precision alignment (638 findings).
+       Silenced for now rather than reindenting the whole plugin. -->
+  <rule ref="Universal.WhiteSpace.PrecisionAlignment">
+    <severity>0</severity>
+  </rule>
+
 </ruleset>

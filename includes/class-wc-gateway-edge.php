@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
  * Edge Gateway.
  *
  * @class    WC_Gateway_Edge
- * @version  1.0.18
+ * @version  1.0.20
  */
 class WC_Gateway_Edge extends WC_Payment_Gateway
 {
@@ -273,7 +273,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       );
 
       wp_send_json_error(
-        array('message' => __('Unable to create the payment demand. Please try again.', 'edge-gateway')),
+        array('message' => __('Unable to create the payment demand. Please try again.', 'edge-gateway-for-woocommerce')),
         502
       );
     }

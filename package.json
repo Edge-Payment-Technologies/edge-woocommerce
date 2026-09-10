@@ -1,7 +1,7 @@
 {
 	"name": "edge-gateway-for-woocommerce",
 	"title": "Edge Gateway for WooCommerce",
-	"version": "1.0.18",
+	"version": "1.0.20",
 	"author": "Kurtis Rainbolt-Greene <kurtis@tryedge.io>",
 	"license": "GPL-3.0+",
 	"keywords": [],
@@ -33,7 +33,7 @@
 		"check-licenses": "wp-scripts check-licenses",
 		"format": "wp-scripts format",
 		"lint:css": "wp-scripts lint-style",
-		"lint:js": "wp-scripts lint-js",
+		"lint:js": "wp-scripts lint-js resources",
 		"lint:md:docs": "wp-scripts lint-md-docs",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
 		"packages-update": "wp-scripts packages-update",

@@ -1,0 +1,25 @@
+includes:
+  - vendor/szepeviktor/phpstan-wordpress/extension.neon
+  # Pre-existing findings, so new code is checked against a green baseline.
+  # Shrink this file over time; do not regenerate it to hide new errors.
+  - phpstan-baseline.neon
+
+parameters:
+  level: 3
+
+  paths:
+    - edge-gateway-for-woocommerce.php
+    - includes
+
+  # WordPress core symbols come from the extension above; WooCommerce's own
+  # functions, classes and hooks come from these stub files.
+  bootstrapFiles:
+    - vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+    - vendor/php-stubs/woocommerce-stubs/woocommerce-packages-stubs.php
+
+  # tests/ are WP-CLI eval-file scripts that run inside a booted WordPress,
+  # not autoloadable classes.
+  excludePaths:
+    - tests/*
+    - deploy/*
+    - vendor/*
