@@ -34,6 +34,15 @@ class WC_Edge_Webhook_Controller
   /** Header carrying the v3 delivery signature. */
   const SIGNATURE_HEADER = 'edge-signature';
 
+  /**
+   * How far a delivery's own timestamp may sit from this site's clock, in seconds.
+   *
+   * The signature covers the timestamp, so without a window an intercepted
+   * delivery stays replayable for good. Edge signs every retry afresh, so no
+   * legitimate delivery is ever older than its own transit time.
+   */
+  const SIGNATURE_TOLERANCE = 300;
+
   /** The only Edge resource this controller acts on. */
   const HANDLED_RESOURCE = 'transaction.payment_demands';
 
@@ -81,7 +90,19 @@ class WC_Edge_Webhook_Controller
    */
   public static function handle(WP_REST_Request $request)
   {
-    if (!self::verify_signature($request)) {
+    $signature = self::verify_signature($request);
+
+    if ('stale' === $signature) {
+      // Authentic, but too old to accept. Either the delivery was held up for
+      // minutes somewhere or this server's clock has drifted. 500 rather than
+      // 401 so the retry ladder stays alive: every retry is signed afresh, so a
+      // delayed delivery still lands, and a drifting clock is worth the noise.
+      self::log('Rejected an Edge webhook signed outside the accepted time window. Check the clock on this server.');
+
+      return self::respond('stale', 500);
+    }
+
+    if ('ok' !== $signature) {
       self::log('Rejected an Edge webhook whose signature did not verify.');
 
       return self::respond('rejected', 401);
@@ -220,21 +241,26 @@ class WC_Edge_Webhook_Controller
    * a comma-separated list of name=value pairs and may carry more schemes later,
    * so it is parsed rather than split into a fixed two parts.
    *
+   * The timestamp is checked as well as signed. A matching MAC only proves the
+   * delivery was genuine once; the window is what stops an old one being played
+   * back later, and it is the sole replay defence here because nothing records
+   * event ids.
+   *
    * @param  WP_REST_Request $request Incoming request.
-   * @return bool
+   * @return string `ok`, `stale` (authentic but outside the window), or `invalid`.
    */
   private static function verify_signature(WP_REST_Request $request)
   {
     $gateway = self::gateway();
 
     if (!$gateway instanceof WC_Gateway_Edge) {
-      return false;
+      return 'invalid';
     }
 
     $secret = trim((string) $gateway->get_option('webhook_secret'));
 
     if ('' === $secret) {
-      return false;
+      return 'invalid';
     }
 
     $parts = array();
@@ -247,13 +273,46 @@ class WC_Edge_Webhook_Controller
       }
     }
 
-    if (!isset($parts['t'], $parts['v3'])) {
-      return false;
+    // ctype_digit keeps the timestamp to the positive integer seconds Edge sends,
+    // so the comparison below cannot be fed a string that casts to something odd.
+    if (!isset($parts['t'], $parts['v3']) || !ctype_digit($parts['t'])) {
+      return 'invalid';
     }
 
     $expected = hash_hmac('sha256', $parts['t'] . '.' . $request->get_body(), $secret);
 
-    return hash_equals($expected, $parts['v3']);
+    // Authenticate first: freshness only means anything once the MAC has held,
+    // and an unsigned request should not be told how far off its clock is.
+    if (!hash_equals($expected, $parts['v3'])) {
+      return 'invalid';
+    }
+
+    // Absolute difference, so a delivery stamped in the future is rejected too.
+    return abs(time() - (int) $parts['t']) > self::signature_tolerance() ? 'stale' : 'ok';
+  }
+
+  /**
+   * Seconds of clock difference this site will tolerate on a delivery.
+   *
+   * Filterable because the failure it guards against is operational, not hostile:
+   * a host whose clock drifts rejects every delivery and leaves orders on hold,
+   * and widening the window is a faster fix than waiting on the host to fix NTP.
+   * A non-positive filter result is ignored rather than disabling the check.
+   *
+   * @return int
+   */
+  private static function signature_tolerance()
+  {
+    /**
+     * Filters how far an Edge webhook's timestamp may sit from this site's clock.
+     *
+     * @since 1.0.20
+     *
+     * @param int $tolerance Tolerance in seconds. Non-positive values are ignored.
+     */
+    $tolerance = (int) apply_filters('edge_webhook_signature_tolerance', self::SIGNATURE_TOLERANCE);
+
+    return $tolerance > 0 ? $tolerance : self::SIGNATURE_TOLERANCE;
   }
 
   /**
