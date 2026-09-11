@@ -1,8 +1,8 @@
 {
-	"name": "woocommerce-edge-gateway",
-	"title": "WooCommerce Edge Payments Gateway",
-	"version": "1.0.15",
-	"author": "WooCommerce",
+	"name": "edge-gateway-for-woocommerce",
+	"title": "Edge Gateway for WooCommerce",
+	"version": "1.0.20",
+	"author": "Kurtis Rainbolt-Greene <kurtis@tryedge.io>",
 	"license": "GPL-3.0+",
 	"keywords": [],
 	"engines": {
@@ -10,13 +10,15 @@
 		"npm": ">=1.1.0"
 	},
 	"files": [
-		"woocommerce-edge-gateway.php",
+		"composer.json",
+		"edge-gateway-for-woocommerce.php",
 		"includes/",
 		"vendor/",
 		"assets/"
 	],
 	"dependencies": {
 		"@wordpress/element": "^8.5.0",
+		"@wordpress/html-entities": "^4.54.0",
 		"@wordpress/i18n": "^6.26.0"
 	},
 	"devDependencies": {
@@ -31,7 +33,7 @@
 		"check-licenses": "wp-scripts check-licenses",
 		"format": "wp-scripts format",
 		"lint:css": "wp-scripts lint-style",
-		"lint:js": "wp-scripts lint-js",
+		"lint:js": "wp-scripts lint-js resources",
 		"lint:md:docs": "wp-scripts lint-md-docs",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
 		"packages-update": "wp-scripts packages-update",
@@ -40,7 +42,7 @@
 		"test:unit": "wp-scripts test-unit-js",
 		"i18n": "npm run i18n:build",
 		"i18n:build": "npm run i18n:pot && ./bin/build_i18n.sh",
-		"i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE <EMAIL@ADDRESS>\"}' . languages/edge-gateway.pot",
+		"i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE engineering@tryedge.io\"}' . languages/edge-gateway-for-woocommerce.pot",
 		"i18n:json": "$(which wp) i18n make-json languages --no-purge"
 	}
 }

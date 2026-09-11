@@ -6,7 +6,7 @@ import { createElement, Fragment, useEffect } from '@wordpress/element';
 
 const settings = getSetting( 'edge_data', {} );
 
-const defaultLabel = __( 'Edge Payments', 'edge-gateway' );
+const defaultLabel = __( 'Edge Payments', 'edge-gateway-for-woocommerce' );
 
 const label = decodeEntities( settings.title ) || defaultLabel;
 
@@ -60,7 +60,7 @@ const ActivateEdgePayments = async () => {
 	}
 
 	edgePaymentDemandId = result.data.payment_demand_id;
-	edgeClient = new Edge( settings.publishable_key, {
+	edgeClient = new window.Edge( settings.publishable_key, {
 		formFactor: 'inputs',
 	} );
 

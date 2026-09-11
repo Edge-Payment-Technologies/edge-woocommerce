@@ -3,7 +3,7 @@ name: Release
 on:
     push:
         tags:
-            - "v*.*.*"
+            - 'v*.*.*'
     workflow_dispatch:
 
 permissions:
@@ -39,11 +39,17 @@ jobs:
             - name: Build a plugin zip
               run: npm run plugin-zip
             - name: Upload release asset
-              uses: softprops/action-gh-release@v3.0.2
+              uses: softprops/action-gh-release@v3.0.3
               env:
                   # Note, this is an exception to action secrets: GH_TOKEN is always available and provides access to
                   # the current repository this action runs in.
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               with:
                   # Provide what the file should be named when attached to the release (plugin-name.zip)
-                  files: ${{ github.workspace }}/woocommerce-edge-gateway.zip
+                  files: ${{ github.workspace }}/edge-gateway-for-woocommerce.zip
+            # - name: WordPress Plugin Deploy
+            #   uses: 10up/action-wordpress-plugin-deploy@2.3.0
+            #   env:
+            #     SVN_PASSWORD: ${{ secrets.WORDPRESS_SVN_PASSWORD }}
+            #     SVN_USERNAME: ${{ secrets.WORDPRESS_SVN_USERNAME }}
+            #     SLUG: edge-gateway-for-woocommerce # optional, remove if GitHub repo name matches SVN slug, including capitalization
