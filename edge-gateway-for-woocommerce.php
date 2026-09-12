@@ -74,12 +74,21 @@ class WC_Edge_Payments
       // WooCommerce may instantiate the gateway only after this hook has fired.
       add_action('woocommerce_create_refund', array('WC_Gateway_Edge', 'capture_refund_context'), 10, 2);
 
-      // Payments settle asynchronously: checkout leaves the order on hold and Edge
-      // reports the outcome here. Registered from the bootstrap so the route exists
-      // whether or not anything has instantiated the gateway yet.
+      // Payments settle asynchronously. Edge's webhook moves the order through
+      // WC_Edge_Order_Sync, and WC_Edge_Demand_Lock keeps a delivery from writing
+      // underneath process_payment(). The checkout's status route only reads the
+      // order the webhook has written.
+      require_once 'includes/class-wc-edge-payment-outcome.php';
+      require_once 'includes/class-wc-edge-demand-lock.php';
+      require_once 'includes/class-wc-edge-order-sync.php';
+
+      // Both routes are registered from the bootstrap so they exist whether or not
+      // anything has instantiated the gateway yet.
       require_once 'includes/class-wc-edge-webhook-controller.php';
+      require_once 'includes/class-wc-edge-checkout-controller.php';
 
       add_action('rest_api_init', array('WC_Edge_Webhook_Controller', 'register'));
+      add_action('rest_api_init', array('WC_Edge_Checkout_Controller', 'register'));
     }
   }
 

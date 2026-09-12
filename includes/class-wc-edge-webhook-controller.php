@@ -137,20 +137,12 @@ class WC_Edge_Webhook_Controller
       return self::respond('retry', 500);
     }
 
-    // The mode comes from the order, not the payload: it was written when the
-    // demand was confirmed, so an unverified body cannot influence key selection.
-    $private_key = $gateway->get_private_key($gateway->get_order_payment_mode($order));
-
-    if ('' === $private_key) {
-      self::log('No Edge private key is configured for order ' . $order->get_id() . '.');
-
-      return self::respond('retry', 500);
-    }
-
+    // Everything from here - picking the key off the order, re-reading the demand
+    // rather than believing the payload, and deciding what it means - lives in
+    // WC_Edge_Order_Sync, whose demand lock also keeps a delivery from writing
+    // underneath process_payment().
     try {
-      \Edge\Auth::setApiKey($private_key);
-
-      $response = \Edge\Client::get('v2/payment_demands/' . rawurlencode($event['resource_id']));
+      $result = WC_Edge_Order_Sync::sync($order, $gateway);
     } catch (Exception $e) {
       // A retry may well succeed, so ask for one rather than losing the event.
       self::log('Unable to read an Edge payment demand for order ' . $order->get_id() . '.');
@@ -158,48 +150,34 @@ class WC_Edge_Webhook_Controller
       return self::respond('retry', 500);
     }
 
-    $state = self::processor_state($response);
+    if (is_wp_error($result)) {
+      $code = $result->get_error_code();
 
-    if ('' === $state) {
-      self::log('Edge returned an unreadable payment demand for order ' . $order->get_id() . '.');
+      // Somebody else is mid-write on this demand - a repeat of this delivery, or
+      // the confirm that produced this very event. Ask for a redelivery rather
+      // than waiting on the lock and holding a connection open.
+      if ('edge_sync_locked' === $code) {
+        return self::respond('locked', 500);
+      }
 
-      return self::respond('retry', 500);
+      if ('edge_no_key' === $code) {
+        self::log('No Edge private key is configured for order ' . $order->get_id() . '.');
+
+        return self::respond('retry', 500);
+      }
+
+      if ('edge_unreadable_state' === $code) {
+        self::log('Edge returned an unreadable payment demand for order ' . $order->get_id() . '.');
+
+        return self::respond('retry', 500);
+      }
+
+      // The order is no longer bound to this demand, or no longer there at all.
+      // Settled as far as this delivery is concerned; a retry cannot help.
+      return self::respond('ignored');
     }
 
-    return self::respond(self::transition($order, $state));
-  }
-
-  /**
-   * Apply an Edge payment state to an order.
-   *
-   * Deliveries arrive out of order and more than once, so every transition has to
-   * be safe to repeat: a paid order is never walked back by a late failure.
-   *
-   * @param  WC_Order $order Order to move.
-   * @param  string   $state Authoritative processor state.
-   * @return string   Outcome label.
-   */
-  private static function transition($order, $state)
-  {
-    if ($order->is_paid()) {
-      return 'already-paid';
-    }
-
-    if ('succeeded' === $state) {
-      $order->payment_complete($order->get_transaction_id());
-      $order->add_order_note(__('Edge confirmed this payment succeeded.', 'edge-gateway-for-woocommerce'));
-
-      return 'paid';
-    }
-
-    if ('failed' === $state) {
-      $order->update_status('failed', __('Edge declined this payment.', 'edge-gateway-for-woocommerce'));
-
-      return 'failed';
-    }
-
-    // pending, processing, reversed, disputed: nothing to do here.
-    return 'no-change';
+    return self::respond($result['outcome']);
   }
 
   /**
@@ -316,25 +294,6 @@ class WC_Edge_Webhook_Controller
   }
 
   /**
-   * Read the processor state out of an Edge payment demand response.
-   *
-   * @param  mixed $response Decoded SDK response.
-   * @return string Empty when the response cannot be read.
-   */
-  private static function processor_state($response)
-  {
-    if (
-      !is_object($response) ||
-      !isset($response->data->attributes->processor_state) ||
-      !is_string($response->data->attributes->processor_state)
-    ) {
-      return '';
-    }
-
-    return $response->data->attributes->processor_state;
-  }
-
-  /**
    * The Edge order holding a payment demand.
    *
    * `process_payment()` stores the demand id as the order's transaction id, which
@@ -365,11 +324,11 @@ class WC_Edge_Webhook_Controller
    */
   private static function gateway()
   {
-    if (!function_exists('WC') || !WC()->payment_gateways) {
+    if (!function_exists('WC') || !WC()->payment_gateways()) {
       return null;
     }
 
-    $gateways = WC()->payment_gateways->payment_gateways();
+    $gateways = WC()->payment_gateways()->payment_gateways();
 
     return isset($gateways[self::GATEWAY_ID]) ? $gateways[self::GATEWAY_ID] : null;
   }
