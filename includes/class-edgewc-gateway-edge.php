@@ -14,7 +14,7 @@ require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php'
  * Edge Gateway.
  *
  * @class    EDGEWC_Gateway_Edge
- * @version  1.0.20
+ * @version  1.0.21
  */
 class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
 {
