@@ -7,7 +7,6 @@ Requires PHP: 8.5
 Stable tag: 1.0.21
 License: GPL-3.0+
 License URI: https://opensource.org/license/gpl-3.0
-Requires Plugins: woocommerce
 
 This is the official WordPress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
 

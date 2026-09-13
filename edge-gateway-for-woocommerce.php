@@ -12,6 +12,7 @@
  *
  * Text Domain: edge-gateway-for-woocommerce
  * Domain Path: /i18n/languages/
+ * Requires Plugins: woocommerce
  */
 
 // Exit if accessed directly.
