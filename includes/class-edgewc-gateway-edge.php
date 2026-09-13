@@ -1,26 +1,22 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php');
 
-
 /**
- * WC_Gateway_Edge class
+ * EDGEWC_Gateway_Edge class
  * @package  Edge Gateway for WooCommerce
  * @since    1.0.0
  */
 
-// Exit if accessed directly.
-if (!defined('ABSPATH')) {
-  exit;
-}
 
 /**
  * Edge Gateway.
  *
- * @class    WC_Gateway_Edge
+ * @class    EDGEWC_Gateway_Edge
  * @version  1.0.20
  */
-class WC_Gateway_Edge extends WC_Payment_Gateway
+class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
 {
   /** Order meta keys that together describe one in-flight Edge refund attempt. */
   const REFUND_ATTEMPT_META = array(

@@ -3,7 +3,7 @@
 /**
  * Plugin Name: Edge Gateway for WooCommerce
  * Plugin URI: https://github.com/Edge-Payment-Technologies/edge-woocommerce
- * Description: This is the official Wordpress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
+ * Description: This is the official WordPress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
  * Version: 1.0.20
  * License: GPL-3.0+
  *
@@ -22,9 +22,9 @@ if (!defined('ABSPATH')) {
 /**
  * WC Edge Payment gateway plugin class.
  *
- * @class WC_Edge_Payments
+ * @class EDGEWC_Gateway
  */
-class WC_Edge_Payments
+class EDGEWC_Gateway
 {
 
   /**
@@ -51,7 +51,7 @@ class WC_Edge_Payments
   public static function add_gateway($gateways)
   {
 
-    $gateways[] = 'WC_Gateway_Edge';
+    $gateways[] = 'EDGEWC_Gateway_Edge';
 
     return $gateways;
   }
@@ -62,7 +62,7 @@ class WC_Edge_Payments
   public static function includes()
   {
 
-    // Make the WC_Gateway_Edge class available.
+    // Make the EDGEWC_Gateway_Edge class available.
     if (class_exists('WC_Payment_Gateway')) {
       require_once 'includes/class-wc-gateway-edge.php';
 
@@ -72,7 +72,7 @@ class WC_Edge_Payments
       // (2) attach the Edge reference to that specific refund, which is what distinguishes a
       // retry from a new partial refund. Register here, not in the gateway constructor:
       // WooCommerce may instantiate the gateway only after this hook has fired.
-      add_action('woocommerce_create_refund', array('WC_Gateway_Edge', 'capture_refund_context'), 10, 2);
+      add_action('woocommerce_create_refund', array('EDGEWC_Gateway_Edge', 'capture_refund_context'), 10, 2);
     }
   }
 
@@ -107,11 +107,11 @@ class WC_Edge_Payments
       add_action(
         'woocommerce_blocks_payment_method_type_registration',
         function (Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry) {
-          $payment_method_registry->register(new WC_Gateway_Edge_Blocks_Support());
+          $payment_method_registry->register(new EDGEWC_Gateway_Edge_Blocks_Support());
         }
       );
     }
   }
 }
 
-WC_Edge_Payments::init();
+EDGEWC_Gateway::init();
