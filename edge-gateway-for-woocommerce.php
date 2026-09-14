@@ -65,7 +65,7 @@ class EDGEWC_Gateway
 
     // Make the EDGEWC_Gateway_Edge class available.
     if (class_exists('WC_Payment_Gateway')) {
-      require_once 'includes/class-wc-gateway-edge.php';
+      require_once 'includes/class-edgewc-gateway-edge.php';
 
       // WooCommerce saves the provisional refund before calling the gateway, but passes it
       // only the order ID, amount, and reason. Capture the refund object so the gateway can
@@ -104,7 +104,7 @@ class EDGEWC_Gateway
   public static function woocommerce_gateway_edge_woocommerce_block_support()
   {
     if (class_exists('Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType')) {
-      require_once 'includes/blocks/class-wc-edge-payments-blocks.php';
+      require_once 'includes/blocks/class-edgewc-edge-payments-blocks.php';
       add_action(
         'woocommerce_blocks_payment_method_type_registration',
         function (Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry) {
