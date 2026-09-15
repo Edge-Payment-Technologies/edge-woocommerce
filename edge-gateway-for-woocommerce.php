@@ -3,8 +3,8 @@
 /**
  * Plugin Name: Edge Gateway for WooCommerce
  * Plugin URI: https://github.com/Edge-Payment-Technologies/edge-woocommerce
- * Description: This is the official Wordpress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
- * Version: 1.0.20
+ * Description: This is the official WordPress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
+ * Version: 1.0.23
  * License: GPL-3.0+
  *
  * Author: Edge Payments
@@ -12,6 +12,7 @@
  *
  * Text Domain: edge-gateway-for-woocommerce
  * Domain Path: /i18n/languages/
+ * Requires Plugins: woocommerce
  */
 
 // Exit if accessed directly.
@@ -22,9 +23,9 @@ if (!defined('ABSPATH')) {
 /**
  * WC Edge Payment gateway plugin class.
  *
- * @class WC_Edge_Payments
+ * @class EDGEWC_Gateway
  */
-class WC_Edge_Payments
+class EDGEWC_Gateway
 {
 
   /**
@@ -51,7 +52,7 @@ class WC_Edge_Payments
   public static function add_gateway($gateways)
   {
 
-    $gateways[] = 'WC_Gateway_Edge';
+    $gateways[] = 'EDGEWC_Gateway_Edge';
 
     return $gateways;
   }
@@ -62,9 +63,9 @@ class WC_Edge_Payments
   public static function includes()
   {
 
-    // Make the WC_Gateway_Edge class available.
+    // Make the EDGEWC_Gateway_Edge class available.
     if (class_exists('WC_Payment_Gateway')) {
-      require_once 'includes/class-wc-gateway-edge.php';
+      require_once 'includes/class-edgewc-gateway-edge.php';
 
       // WooCommerce saves the provisional refund before calling the gateway, but passes it
       // only the order ID, amount, and reason. Capture the refund object so the gateway can
@@ -72,14 +73,14 @@ class WC_Edge_Payments
       // (2) attach the Edge reference to that specific refund, which is what distinguishes a
       // retry from a new partial refund. Register here, not in the gateway constructor:
       // WooCommerce may instantiate the gateway only after this hook has fired.
-      add_action('woocommerce_create_refund', array('WC_Gateway_Edge', 'capture_refund_context'), 10, 2);
+      add_action('woocommerce_create_refund', array('EDGEWC_Gateway_Edge', 'capture_refund_context'), 10, 2);
 
       // Payments settle asynchronously: checkout leaves the order on hold and Edge
       // reports the outcome here. Registered from the bootstrap so the route exists
       // whether or not anything has instantiated the gateway yet.
-      require_once 'includes/class-wc-edge-webhook-controller.php';
+      require_once 'includes/class-edgewc-webhook-controller.php';
 
-      add_action('rest_api_init', array('WC_Edge_Webhook_Controller', 'register'));
+      add_action('rest_api_init', array('EDGEWC_Webhook_Controller', 'register'));
     }
   }
 
@@ -110,15 +111,15 @@ class WC_Edge_Payments
   public static function woocommerce_gateway_edge_woocommerce_block_support()
   {
     if (class_exists('Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType')) {
-      require_once 'includes/blocks/class-wc-edge-payments-blocks.php';
+      require_once 'includes/blocks/class-edgewc-edge-payments-blocks.php';
       add_action(
         'woocommerce_blocks_payment_method_type_registration',
         function (Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry) {
-          $payment_method_registry->register(new WC_Gateway_Edge_Blocks_Support());
+          $payment_method_registry->register(new EDGEWC_Gateway_Edge_Blocks_Support());
         }
       );
     }
   }
 }
 
-WC_Edge_Payments::init();
+EDGEWC_Gateway::init();

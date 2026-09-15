@@ -20,10 +20,10 @@ if (!defined('ABSPATH')) {
  * delivery body: it only names a payment demand, and the state acted on is read
  * back from the Edge API with this site's own key.
  *
- * @class    WC_Edge_Webhook_Controller
+ * @class    EDGEWC_Webhook_Controller
  * @version  1.0.19
  */
-class WC_Edge_Webhook_Controller
+class EDGEWC_Webhook_Controller
 {
   /** REST namespace. */
   const REST_NAMESPACE = 'edge/v1';
@@ -131,7 +131,7 @@ class WC_Edge_Webhook_Controller
 
     $gateway = self::gateway();
 
-    if (!$gateway instanceof WC_Gateway_Edge) {
+    if (!$gateway instanceof EDGEWC_Gateway_Edge) {
       self::log('An Edge webhook arrived but the gateway is not available.');
 
       return self::respond('retry', 500);
@@ -253,7 +253,7 @@ class WC_Edge_Webhook_Controller
   {
     $gateway = self::gateway();
 
-    if (!$gateway instanceof WC_Gateway_Edge) {
+    if (!$gateway instanceof EDGEWC_Gateway_Edge) {
       return 'invalid';
     }
 

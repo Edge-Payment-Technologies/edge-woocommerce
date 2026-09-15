@@ -1,26 +1,22 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php');
 
-
 /**
- * WC_Gateway_Edge class
+ * EDGEWC_Gateway_Edge class
  * @package  Edge Gateway for WooCommerce
  * @since    1.0.0
  */
 
-// Exit if accessed directly.
-if (!defined('ABSPATH')) {
-  exit;
-}
 
 /**
  * Edge Gateway.
  *
- * @class    WC_Gateway_Edge
- * @version  1.0.20
+ * @class    EDGEWC_Gateway_Edge
+ * @version  1.0.23
  */
-class WC_Gateway_Edge extends WC_Payment_Gateway
+class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
 {
   /** Order meta keys that together describe one in-flight Edge refund attempt. */
   const REFUND_ATTEMPT_META = array(
@@ -149,7 +145,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         'description' => sprintf(
           /* translators: %s: the URL Edge should deliver webhooks to. */
           __('Orders are placed on hold at checkout and stay there until Edge reports the outcome. In your Edge dashboard, create a webhook subscription pointing at <code>%s</code>, subscribed to <code>transaction.payment_demands.succeeded</code> and <code>transaction.payment_demands.failed</code>, then paste its secret key below.', 'edge-gateway-for-woocommerce'),
-          esc_url(WC_Edge_Webhook_Controller::callback_url())
+          esc_url(EDGEWC_Webhook_Controller::callback_url())
         ),
       ),
       'webhook_secret' => array(
@@ -550,7 +546,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     // The demand is confirmed but not yet settled. Rather than hold the checkout
     // request open polling for an outcome, the order stays on hold until Edge
-    // reports one to WC_Edge_Webhook_Controller.
+    // reports one to EDGEWC_Webhook_Controller.
     WC()->cart->empty_cart();
     WC()->session->__unset('edge_payment_demand');
 

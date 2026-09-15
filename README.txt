@@ -1,14 +1,14 @@
 === Edge Gateway for WooCommerce ===
 Contributors: kurtisatedge, ziyanatedge
 Tags: credit card, payments, woocommerce
-Requires at least: 8.0
+Requires at least: 7.1
 Tested up to: 7.1
 Requires PHP: 8.5
-Stable tag: 1.0.20
+Stable tag: 1.0.23
 License: GPL-3.0+
 License URI: https://opensource.org/license/gpl-3.0
 
-This is the official Wordpress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
+This is the official WordPress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
 
 == Description ==
 
@@ -32,6 +32,13 @@ With Edge Payments, you can:
 Edge Payments is designed to give WooCommerce merchants straightforward payment processing without unnecessary complexity.
 
 Connect your store, start accepting payments, and manage your payment activity with Edge.
+
+== External services ==
+
+This plugin utilizes the Edge Payment Technologies, Inc. HTTP API to make requests with the installer's token in order to
+charge payment methods, refund orders, or pause subscription services.
+
+This service is provided by "Edge Payment Technologies, INC": terms of use (https://legal.tryedge.io/end-user-terms-of-service.pdf), privacy policy (https://legal.tryedge.io/privacy-policy.pdf).
 
 == Compatibility Notes ==
 
