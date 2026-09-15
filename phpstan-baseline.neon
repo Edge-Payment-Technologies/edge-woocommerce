@@ -10,28 +10,28 @@ parameters:
 			message: '#^Access to an undefined property WooCommerce\:\:\$payment_gateways\.$#'
 			identifier: property.notFound
 			count: 1
-			path: includes/blocks/class-wc-edge-payments-blocks.php
+			path: includes/blocks/class-edgewc-edge-payments-blocks.php
 
 		-
-			message: '#^Access to an undefined property WC_Gateway_Edge\:\:\$private_key\.$#'
+			message: '#^Access to an undefined property EDGEWC_Gateway_Edge\:\:\$private_key\.$#'
 			identifier: property.notFound
 			count: 4
-			path: includes/class-wc-gateway-edge.php
+			path: includes/class-edgewc-gateway-edge.php
 
 		-
-			message: '#^Access to an undefined property WC_Gateway_Edge\:\:\$publishable_key\.$#'
+			message: '#^Access to an undefined property EDGEWC_Gateway_Edge\:\:\$publishable_key\.$#'
 			identifier: property.notFound
 			count: 1
-			path: includes/class-wc-gateway-edge.php
+			path: includes/class-edgewc-gateway-edge.php
 
 		-
-			message: '#^Access to an undefined property WC_Gateway_Edge\:\:\$testmode\.$#'
+			message: '#^Access to an undefined property EDGEWC_Gateway_Edge\:\:\$testmode\.$#'
 			identifier: property.notFound
 			count: 3
-			path: includes/class-wc-gateway-edge.php
+			path: includes/class-edgewc-gateway-edge.php
 
 		-
 			message: '#^Action callback returns bool but should not return anything\.$#'
 			identifier: return.void
 			count: 1
-			path: includes/class-wc-gateway-edge.php
+			path: includes/class-edgewc-gateway-edge.php

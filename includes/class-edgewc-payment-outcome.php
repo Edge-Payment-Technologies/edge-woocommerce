@@ -16,10 +16,10 @@ if (!defined('ABSPATH')) {
  *
  * Edge settles a card payment asynchronously: confirming a demand leaves it
  * `pending`, and `succeeded` or `failed` arrives seconds later by webhook. Kept
- * apart from WC_Edge_Order_Sync, the part that writes notes and moves the order,
+ * apart from EDGEWC_Order_Sync, the part that writes notes and moves the order,
  * so the rules can be read - and exercised from `wp eval` - on their own.
  */
-final class WC_Edge_Payment_Outcome
+final class EDGEWC_Payment_Outcome
 {
 
   /** Take the money: the payment succeeded and the order is not paid yet. */

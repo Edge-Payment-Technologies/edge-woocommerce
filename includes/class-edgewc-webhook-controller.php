@@ -20,10 +20,10 @@ if (!defined('ABSPATH')) {
  * delivery body: it only names a payment demand, and the state acted on is read
  * back from the Edge API with this site's own key.
  *
- * @class    WC_Edge_Webhook_Controller
+ * @class    EDGEWC_Webhook_Controller
  * @version  1.0.19
  */
-class WC_Edge_Webhook_Controller
+class EDGEWC_Webhook_Controller
 {
   /** REST namespace. */
   const REST_NAMESPACE = 'edge/v1';
@@ -131,7 +131,7 @@ class WC_Edge_Webhook_Controller
 
     $gateway = self::gateway();
 
-    if (!$gateway instanceof WC_Gateway_Edge) {
+    if (!$gateway instanceof EDGEWC_Gateway_Edge) {
       self::log('An Edge webhook arrived but the gateway is not available.');
 
       return self::respond('retry', 500);
@@ -139,10 +139,10 @@ class WC_Edge_Webhook_Controller
 
     // Everything from here - picking the key off the order, re-reading the demand
     // rather than believing the payload, and deciding what it means - lives in
-    // WC_Edge_Order_Sync, whose demand lock also keeps a delivery from writing
+    // EDGEWC_Order_Sync, whose demand lock also keeps a delivery from writing
     // underneath process_payment().
     try {
-      $result = WC_Edge_Order_Sync::sync($order, $gateway);
+      $result = EDGEWC_Order_Sync::sync($order, $gateway);
     } catch (Exception $e) {
       // A retry may well succeed, so ask for one rather than losing the event.
       self::log('Unable to read an Edge payment demand for order ' . $order->get_id() . '.');
@@ -231,7 +231,7 @@ class WC_Edge_Webhook_Controller
   {
     $gateway = self::gateway();
 
-    if (!$gateway instanceof WC_Gateway_Edge) {
+    if (!$gateway instanceof EDGEWC_Gateway_Edge) {
       return 'invalid';
     }
 

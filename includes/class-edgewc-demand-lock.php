@@ -23,7 +23,7 @@ if (!defined('ABSPATH')) {
  * other as well.
  *
  * Built on add_option() for the same reason as the refund lock in
- * WC_Gateway_Edge: options have a unique key in the database, so the insert is
+ * EDGEWC_Gateway_Edge: options have a unique key in the database, so the insert is
  * atomic where a read-then-write transient is not, and its failure *is* the
  * mutual exclusion. Keyed on the demand rather than the order, because a retry
  * after a decline reuses the demand while the order moves under it.
@@ -33,7 +33,7 @@ if (!defined('ABSPATH')) {
  * lease has expired and been taken over, the original holder releasing it would
  * otherwise free somebody else's lock.
  */
-final class WC_Edge_Demand_Lock
+final class EDGEWC_Demand_Lock
 {
 
   /** Default lease length. Only has to outlast one read of the demand plus the order write. */

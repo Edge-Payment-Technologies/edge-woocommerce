@@ -1,26 +1,22 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) exit; // Exit if accessed directly
 require_once (plugin_dir_path(plugin_dir_path(__FILE__)) . 'vendor/autoload.php');
 
-
 /**
- * WC_Gateway_Edge class
+ * EDGEWC_Gateway_Edge class
  * @package  Edge Gateway for WooCommerce
  * @since    1.0.0
  */
 
-// Exit if accessed directly.
-if (!defined('ABSPATH')) {
-  exit;
-}
 
 /**
  * Edge Gateway.
  *
- * @class    WC_Gateway_Edge
- * @version  1.0.20
+ * @class    EDGEWC_Gateway_Edge
+ * @version  1.0.23
  */
-class WC_Gateway_Edge extends WC_Payment_Gateway
+class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
 {
   /** Order meta keys that together describe one in-flight Edge refund attempt. */
   const REFUND_ATTEMPT_META = array(
@@ -161,7 +157,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         'description' => sprintf(
           /* translators: %s: the URL Edge should deliver webhooks to. */
           __('Orders are placed on hold at checkout and stay there until Edge reports the outcome. In your Edge dashboard, create a webhook subscription pointing at <code>%s</code>, subscribed to <code>transaction.payment_demands.succeeded</code> and <code>transaction.payment_demands.failed</code>, then paste its secret key below.', 'edge-gateway-for-woocommerce'),
-          esc_url(WC_Edge_Webhook_Controller::callback_url())
+          esc_url(EDGEWC_Webhook_Controller::callback_url())
         ),
       ),
       'webhook_secret' => array(
@@ -540,7 +536,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     // Hold the demand for the whole critical section. A webhook for this same
     // demand can arrive the instant confirm returns - before the lines below have
-    // finished writing the order - and WC_Edge_Order_Sync takes the same lock, so
+    // finished writing the order - and EDGEWC_Order_Sync takes the same lock, so
     // the two cannot interleave. Longer than a sync's lease because this stretch
     // is up to three calls to Edge.
     $lock_owner = $this->take_demand_lock($payment_demand_id);
@@ -577,7 +573,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
       // Read the order back first: a retry after a decline reuses this demand, and
       // the previous attempt's webhook may have moved the order since the Store
       // API handed us a copy. wc_get_order() alone would not show that.
-      $fresh = WC_Edge_Order_Sync::reload_order($order_id);
+      $fresh = EDGEWC_Order_Sync::reload_order($order_id);
 
       if ($fresh instanceof WC_Order) {
         $order = $fresh;
@@ -640,7 +636,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
       );
     } finally {
-      WC_Edge_Demand_Lock::release($payment_demand_id, $lock_owner);
+      EDGEWC_Demand_Lock::release($payment_demand_id, $lock_owner);
     }
 
     // Remember which order this demand now belongs to, so that a checkout reloaded
@@ -651,7 +647,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
 
     // The demand is confirmed but not yet settled, and `pending` is what tells the
     // Store API to answer 202 so the block holds the checkout open and polls
-    // WC_Edge_Checkout_Controller for the outcome. Nothing is torn down here: the
+    // EDGEWC_Checkout_Controller for the outcome. Nothing is torn down here: the
     // cart is what lets WooCommerce reuse this order if the card is declined, and
     // core empties it on the thank-you page anyway (wc_clear_cart_after_payment).
     // The session record is what the retry's demand id is validated against.
@@ -684,7 +680,7 @@ class WC_Gateway_Edge extends WC_Payment_Gateway
         usleep(self::LOCK_RETRY_DELAY_US);
       }
 
-      $owner = WC_Edge_Demand_Lock::acquire($demand_id, self::CONFIRM_LOCK_TTL);
+      $owner = EDGEWC_Demand_Lock::acquire($demand_id, self::CONFIRM_LOCK_TTL);
 
       if (false !== $owner) {
         return $owner;

@@ -32,7 +32,7 @@ if (!defined('ABSPATH')) {
  * one of its own. check_ajax_referer() would simply fail those shoppers, and they
  * would never see their decline.
  */
-final class WC_Edge_Checkout_Controller
+final class EDGEWC_Checkout_Controller
 {
 
   /** REST namespace, shared with the webhook. */
@@ -136,7 +136,7 @@ final class WC_Edge_Checkout_Controller
 
     // Deliberately not is_available(): that asks whether a new payment could be
     // started, none of which has any bearing on an order already placed.
-    if (!($gateway instanceof WC_Gateway_Edge)) {
+    if (!($gateway instanceof EDGEWC_Gateway_Edge)) {
       return new WP_Error(
         'edge_unavailable',
         __('Card payments are not available for this order.', 'edge-gateway-for-woocommerce'),
@@ -180,7 +180,7 @@ final class WC_Edge_Checkout_Controller
    * a demand that has already been paid - create_payment_demand() keys its reuse
    * on the cart hash, which an identical cart reproduces exactly.
    *
-   * @param  WC_Gateway_Edge $gateway Gateway, for the return URL.
+   * @param  EDGEWC_Gateway_Edge $gateway Gateway, for the return URL.
    * @param  WC_Order        $order   Paid order.
    * @return WP_REST_Response
    */

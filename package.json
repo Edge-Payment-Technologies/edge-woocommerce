@@ -1,10 +1,11 @@
 {
 	"name": "edge-gateway-for-woocommerce",
 	"title": "Edge Gateway for WooCommerce",
-	"version": "1.0.20",
+	"version": "1.0.23",
 	"author": "Kurtis Rainbolt-Greene <kurtis@tryedge.io>",
-	"license": "GPL-3.0+",
-	"keywords": [],
+	"license": "GPL-3.0-or-later",
+	"keywords": ["woocommerce", "edge-payment-technologies"],
+	"respository": "https://github.com/Edge-Payment-Technologies/edge-woocommerce",
 	"engines": {
 		"node": ">=6.9.4",
 		"npm": ">=1.1.0"

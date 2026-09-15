@@ -20,10 +20,10 @@ if (!defined('ABSPATH')) {
  * them. The checkout's status poll never comes through here - it only reads the
  * order this writes.
  *
- * The decision itself is not here - it is in WC_Edge_Payment_Outcome, which has
+ * The decision itself is not here - it is in EDGEWC_Payment_Outcome, which has
  * no WordPress in it. This is the part that writes.
  */
-final class WC_Edge_Order_Sync
+final class EDGEWC_Order_Sync
 {
 
   /**
@@ -34,7 +34,7 @@ final class WC_Edge_Order_Sync
    * holding its copy since before another request moved the order.
    *
    * @param  WC_Order        $order   Order to sync.
-   * @param  WC_Gateway_Edge $gateway Configured gateway.
+   * @param  EDGEWC_Gateway_Edge $gateway Configured gateway.
    * @return array|WP_Error `array{state: string, outcome: string}`.
    * @throws Exception When the demand cannot be read. The caller decides whether
    *                   that is worth a retry.
@@ -50,7 +50,7 @@ final class WC_Edge_Order_Sync
       );
     }
 
-    $owner = WC_Edge_Demand_Lock::acquire($demand_id);
+    $owner = EDGEWC_Demand_Lock::acquire($demand_id);
 
     if (false === $owner) {
       // Somebody else is applying this demand right now - a repeated delivery,
@@ -116,7 +116,7 @@ final class WC_Edge_Order_Sync
         );
       }
 
-      $outcome = WC_Edge_Payment_Outcome::decide($state, $fresh->get_status(), $fresh->is_paid());
+      $outcome = EDGEWC_Payment_Outcome::decide($state, $fresh->get_status(), $fresh->is_paid());
 
       self::apply($fresh, $outcome, $state, $demand_id);
 
@@ -125,7 +125,7 @@ final class WC_Edge_Order_Sync
         'outcome' => $outcome,
       );
     } finally {
-      WC_Edge_Demand_Lock::release($demand_id, $owner);
+      EDGEWC_Demand_Lock::release($demand_id, $owner);
     }
   }
 
@@ -206,10 +206,10 @@ final class WC_Edge_Order_Sync
    *
    * Every branch has to be safe to repeat and safe to arrive late, because
    * deliveries do both. Which branch applies was decided by
-   * WC_Edge_Payment_Outcome::decide(); this only carries it out.
+   * EDGEWC_Payment_Outcome::decide(); this only carries it out.
    *
    * @param  WC_Order $order     Order, freshly read.
-   * @param  string   $outcome   One of the WC_Edge_Payment_Outcome constants.
+   * @param  string   $outcome   One of the EDGEWC_Payment_Outcome constants.
    * @param  string   $state     Edge processor state, for the notes that quote it.
    * @param  string   $demand_id Demand id, which becomes the transaction id.
    * @return void
@@ -217,25 +217,25 @@ final class WC_Edge_Order_Sync
   private static function apply($order, $outcome, $state, $demand_id)
   {
     switch ($outcome) {
-      case WC_Edge_Payment_Outcome::COMPLETE:
+      case EDGEWC_Payment_Outcome::COMPLETE:
         $order->payment_complete($demand_id);
         $order->add_order_note(__('Edge confirmed this payment succeeded.', 'edge-gateway-for-woocommerce'));
 
         return;
 
-      case WC_Edge_Payment_Outcome::IGNORED_STALE_FAILURE:
+      case EDGEWC_Payment_Outcome::IGNORED_STALE_FAILURE:
         $order->add_order_note(
           __('Edge reported a failure for a payment already marked paid. Not changing the order.', 'edge-gateway-for-woocommerce')
         );
 
         return;
 
-      case WC_Edge_Payment_Outcome::FAIL:
+      case EDGEWC_Payment_Outcome::FAIL:
         $order->update_status('failed', __('Edge declined this payment.', 'edge-gateway-for-woocommerce'));
 
         return;
 
-      case WC_Edge_Payment_Outcome::RECONCILE:
+      case EDGEWC_Payment_Outcome::RECONCILE:
         $order->update_meta_data('_edge_processor_state', $state);
         $order->add_order_note(
           sprintf(
@@ -248,7 +248,7 @@ final class WC_Edge_Order_Sync
 
         return;
 
-      case WC_Edge_Payment_Outcome::UNRECOGNISED:
+      case EDGEWC_Payment_Outcome::UNRECOGNISED:
         $order->add_order_note(
           sprintf(
             /* translators: %s: unrecognised Edge payment state. */
