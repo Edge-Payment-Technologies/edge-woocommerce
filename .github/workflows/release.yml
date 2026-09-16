@@ -36,34 +36,8 @@ jobs:
             - name: Build blocks and assets
               continue-on-error: true
               run: npm run build
-            - name: Remove non-runtime vendor files
-              run: |
-                  find vendor -type d \( \
-                    -name .github -o \
-                    -name docs \
-                  \) -prune -exec rm -rf -- {} +
-                  find vendor -type f \( \
-                    -name .yamllint -o \
-                    -name 'CHANGELOG*' -o \
-                    -name 'CONTRIBUTOR*' -o \
-                    -name mise.toml -o \
-                    -name 'README*' -o \
-                    -name 'UPGRADING*' \
-                  \) -delete
             - name: Build a plugin zip
               run: npm run plugin-zip
-            - name: Verify the plugin zip
-              run: |
-                  unexpected_files="$(
-                    unzip -Z1 edge-gateway-for-woocommerce.zip |
-                      grep -E '/vendor/.*/(\.github|docs)(/|$)|/vendor/.*/(\.yamllint|CHANGELOG[^/]*|CONTRIBUTOR[^/]*|mise\.toml|README[^/]*|UPGRADING[^/]*)$' || true
-                  )"
-
-                  if [ -n "$unexpected_files" ]; then
-                    echo "The plugin zip contains non-runtime vendor files:"
-                    echo "$unexpected_files"
-                    exit 1
-                  fi
             - name: Upload release asset
               uses: softprops/action-gh-release@v3.0.3
               env:
