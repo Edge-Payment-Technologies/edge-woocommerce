@@ -1,10 +1,13 @@
 {
 	"name": "edge-gateway-for-woocommerce",
 	"title": "Edge Gateway for WooCommerce",
-	"version": "1.0.23",
+	"version": "1.0.24",
 	"author": "Kurtis Rainbolt-Greene <kurtis@tryedge.io>",
 	"license": "GPL-3.0-or-later",
-	"keywords": ["woocommerce", "edge-payment-technologies"],
+	"keywords": [
+		"woocommerce",
+		"edge-payment-technologies"
+	],
 	"respository": "https://github.com/Edge-Payment-Technologies/edge-woocommerce",
 	"engines": {
 		"node": ">=6.9.4",
@@ -15,7 +18,13 @@
 		"edge-gateway-for-woocommerce.php",
 		"includes/",
 		"vendor/",
-		"assets/"
+		"assets/",
+		"!vendor/edge-payment-technologies/edge-php-sdk/mise.toml",
+		"!vendor/edge-payment-technologies/edge-php-sdk/.github",
+		"!vendor/edge-payment-technologies/edge-php-sdk/.gitignore",
+		"!vendor/edge-payment-technologies/edge-php-sdk/mise.toml",
+		"!vendor/league/iso3166/.yamllint",
+		"!vendor/psr/http-message/docs/"
 	],
 	"dependencies": {
 		"@wordpress/element": "^8.5.0",
