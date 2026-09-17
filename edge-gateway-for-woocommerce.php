@@ -4,7 +4,7 @@
  * Plugin Name: Edge Gateway for WooCommerce
  * Plugin URI: https://github.com/Edge-Payment-Technologies/edge-woocommerce
  * Description: This is the official WordPress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.
- * Version: 1.0.24
+ * Version: 1.0.25
  * Requires at least: 7.1
  * Requires PHP: 8.5
  * License: GPL-3.0+
