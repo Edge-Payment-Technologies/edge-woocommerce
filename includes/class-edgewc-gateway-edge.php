@@ -33,6 +33,18 @@ class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
   /** Seconds after which a refund lock left behind by a killed worker may be reclaimed. */
   const REFUND_LOCK_TTL = 600;
 
+  /** How many times process_payment() tries for the demand lock before giving up. */
+  const LOCK_ATTEMPTS = 3;
+
+  /** Pause between those attempts, in microseconds. */
+  const LOCK_RETRY_DELAY_US = 300000;
+
+  /** Lease length for the demand lock held across confirm, in seconds. */
+  const CONFIRM_LOCK_TTL = 90;
+
+  /** How long an unsettled order blocks a second payment for the same cart, in seconds. */
+  const IN_FLIGHT_WINDOW = 3600;
+
   /** Refund demand states Edge may report. */
   const REFUND_STATES = array('pending', 'processing', 'succeeded', 'failed', 'errored');
 
@@ -241,7 +253,32 @@ class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
       isset($stored_demand['cart_hash'], $stored_demand['payment_demand_id']) &&
       $stored_demand['cart_hash'] === $cart_hash
     ) {
-      wp_send_json_success(array('payment_demand_id' => $stored_demand['payment_demand_id']));
+      $bound_order = isset($stored_demand['order_id']) ? wc_get_order((int) $stored_demand['order_id']) : null;
+
+      // A payment this session started is still settling. The checkout comes back
+      // with a full cart while the order placed from it is on hold, so without this
+      // a reload would hand the shopper a second order for the same goods - and
+      // this demand cannot be reused either, since Edge only lets a `failed` one
+      // back in. Past an hour, let them start again: a job stuck at Edge is not a
+      // reason to refuse somebody the ability to buy.
+      if (
+        $bound_order instanceof WC_Order &&
+        $this->id === $bound_order->get_payment_method() &&
+        $bound_order->has_status('on-hold') &&
+        $this->is_within_in_flight_window($bound_order)
+      ) {
+        wp_send_json_error(
+          array('message' => __('Your previous payment is still being processed. Please wait a moment and reload this page.', 'edge-gateway-for-woocommerce')),
+          409
+        );
+      }
+
+      // Reuse it only while nothing has been paid against it. A declined demand is
+      // the one state Edge allows back in, so a reload after a decline lands on the
+      // same demand and the same order; anything else gets a fresh one.
+      if (!($bound_order instanceof WC_Order) || $bound_order->has_status('failed')) {
+        wp_send_json_success(array('payment_demand_id' => $stored_demand['payment_demand_id']));
+      }
     }
 
     \Edge\Auth::setApiKey($this->private_key);
@@ -292,6 +329,26 @@ class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
     );
 
     wp_send_json_success(array('payment_demand_id' => $payment_demand_id));
+  }
+
+  /**
+   * Whether an unsettled order is recent enough to still be worth waiting on.
+   *
+   * An order with no creation date is treated as in flight: not knowing how old it
+   * is, is not knowing that it is over.
+   *
+   * @param  WC_Order $order Order bound to the stored demand.
+   * @return bool
+   */
+  private function is_within_in_flight_window($order)
+  {
+    $created = $order->get_date_created();
+
+    if (!$created) {
+      return true;
+    }
+
+    return time() - $created->getTimestamp() < self::IN_FLIGHT_WINDOW;
   }
 
   /**
@@ -477,6 +534,19 @@ class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
       throw new Exception(esc_html__('Invalid Edge payment reference.', 'edge-gateway-for-woocommerce'));
     }
 
+    // Hold the demand for the whole critical section. A webhook for this same
+    // demand can arrive the instant confirm returns - before the lines below have
+    // finished writing the order - and EDGEWC_Order_Sync takes the same lock, so
+    // the two cannot interleave. Longer than a sync's lease because this stretch
+    // is up to three calls to Edge.
+    $lock_owner = $this->take_demand_lock($payment_demand_id);
+
+    if (false === $lock_owner) {
+      throw new Exception(
+        esc_html__('Your payment is still being processed. Please wait a moment and try again.', 'edge-gateway-for-woocommerce')
+      );
+    }
+
     \Edge\Auth::setApiKey($this->private_key);
 
     try {
@@ -499,12 +569,35 @@ class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
       // Bind the order to the demand and save it before confirming. Confirmation
       // can dispatch the outcome webhook immediately, and that delivery has to be
       // able to find this order and read the mode off it to pick the right key.
+      //
+      // Read the order back first: a retry after a decline reuses this demand, and
+      // the previous attempt's webhook may have moved the order since the Store
+      // API handed us a copy. wc_get_order() alone would not show that.
+      $fresh = EDGEWC_Order_Sync::reload_order($order_id);
+
+      if ($fresh instanceof WC_Order) {
+        $order = $fresh;
+      }
+
+      // Already bound to this demand, so this order has been confirmed against it
+      // once before: the shopper is retrying after a decline. Not read off the
+      // status, which the Store API has already reset to `pending` by now.
+      if (hash_equals($payment_demand_id, (string) $order->get_transaction_id())) {
+        $order->add_order_note(__('Retrying the payment with Edge after a decline.', 'edge-gateway-for-woocommerce'));
+      }
+
       $order->set_transaction_id($payment_demand_id);
       $order->update_meta_data('_edge_payment_mode', $this->testmode ? 'sandbox' : 'live');
-      $order->update_status(
-        'on-hold',
-        __('Awaiting payment confirmation from Edge.', 'edge-gateway-for-woocommerce')
-      );
+
+      // Never walk a paid order backwards. Nothing should have paid it this early,
+      // but the whole point of the guard is the case where something did.
+      if (!$order->is_paid()) {
+        $order->update_status(
+          'on-hold',
+          __('Awaiting payment confirmation from Edge.', 'edge-gateway-for-woocommerce')
+        );
+      }
+
       $order->save();
 
       Edge\Client::update(
@@ -542,18 +635,64 @@ class EDGEWC_Gateway_Edge extends WC_Payment_Gateway
       throw new Exception(
         esc_html__('Order payment failed. To make a successful payment using Edge Payments, please review the gateway settings.', 'edge-gateway-for-woocommerce')
       );
+    } finally {
+      EDGEWC_Demand_Lock::release($payment_demand_id, $lock_owner);
     }
 
-    // The demand is confirmed but not yet settled. Rather than hold the checkout
-    // request open polling for an outcome, the order stays on hold until Edge
-    // reports one to EDGEWC_Webhook_Controller.
-    WC()->cart->empty_cart();
-    WC()->session->__unset('edge_payment_demand');
+    // Remember which order this demand now belongs to, so that a checkout reloaded
+    // mid-payment can tell "the attempt you are still waiting on" from "an
+    // identical cart you are buying again".
+    $stored_demand['order_id'] = $order_id;
+    WC()->session->set('edge_payment_demand', $stored_demand);
 
+    // The demand is confirmed but not yet settled, and `pending` is what tells the
+    // Store API to answer 202 so the block holds the checkout open and polls
+    // EDGEWC_Checkout_Controller for the outcome. Nothing is torn down here: the
+    // cart is what lets WooCommerce reuse this order if the card is declined, and
+    // core empties it on the thank-you page anyway (wc_clear_cart_after_payment).
+    // The session record is what the retry's demand id is validated against.
     return array(
-      'result' => 'success',
-      'redirect' => $this->get_return_url($order)
+      'result' => 'pending',
+      'redirect' => $this->get_return_url($order),
+      // Blocks seeds its checkout store's orderId from the draft order in the
+      // opening GET /wc/store/v1/checkout and never refreshes it from this
+      // response, so on a fresh session the browser is holding 0. WooCommerce
+      // merges everything returned here into payment_details, which is how these
+      // two reach the script that has to poll for them.
+      'edge_order_id' => (string) $order_id,
+      'edge_demand_id' => $payment_demand_id,
     );
+  }
+
+  /**
+   * Take the demand lock, allowing for a sync that is about to let go of it.
+   *
+   * A webhook holds it only for one read of the demand plus an order write, so a
+   * brief wait is far better for the shopper than being told to try again.
+   *
+   * @param  string $demand_id Edge payment demand id.
+   * @return string|false Owner token, or false when it could not be taken.
+   */
+  private function take_demand_lock($demand_id)
+  {
+    for ($attempt = 0; $attempt < self::LOCK_ATTEMPTS; $attempt++) {
+      if ($attempt > 0) {
+        usleep(self::LOCK_RETRY_DELAY_US);
+      }
+
+      $owner = EDGEWC_Demand_Lock::acquire($demand_id, self::CONFIRM_LOCK_TTL);
+
+      if (false !== $owner) {
+        return $owner;
+      }
+    }
+
+    wc_get_logger()->error(
+      'Gave up waiting for the Edge sync lock on a payment demand.',
+      array('source' => 'edge-woocommerce', 'payment_demand_id' => $demand_id)
+    );
+
+    return false;
   }
 
   /**
