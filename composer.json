@@ -1,7 +1,8 @@
 {
-	"name": "edge-payment-technologies/edge-woocommerce",
-	"description": "Edge Payments WooCommerce Plugin",
+	"name": "edge-payment-technologies/edge-gateway-for-woocommerce",
+	"description": "This is the official WordPress plugin for utilizing Edge Payment Technologies, Inc. as a payment gateway in WooCommerce stores.",
 	"type": "plugin",
+	"license": "GPL-3.0-or-later",
 	"autoload": {
 		"psr-4": {
 			"EdgePayments\\EdgeWoocommerce\\": "src/"
@@ -9,5 +10,16 @@
 	},
 	"require": {
 		"edge-payment-technologies/edge-php-sdk": "^2.0"
+	},
+	"require-dev": {
+		"woocommerce/woocommerce-sniffs": "^1.0",
+		"phpstan/phpstan": "^2.2",
+		"szepeviktor/phpstan-wordpress": "^2.0",
+		"php-stubs/woocommerce-stubs": "^11.1"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
 	}
 }

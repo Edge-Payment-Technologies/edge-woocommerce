@@ -67,3 +67,7 @@ wp-cli.local.yml
 select2.scss
 /assets/
 /languages/
+
+# mise per-machine overrides (e.g. EDGE_STUDIO_SITE)
+mise.local.toml
+.mise.local.toml

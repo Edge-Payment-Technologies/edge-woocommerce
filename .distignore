@@ -1,0 +1,12 @@
+/.wordpress-org
+/.git
+/.github
+/node_modules
+/vendor/edge-payment-technologies/edge-php-sdk/.github
+/vendor/edge-payment-technologies/edge-php-sdk/mise.toml
+/vendor/edge-payment-technologies/edge-php-sdk/.gitignore
+/vendor/league/iso3166/.yamllint
+/vendor/psr/http-message/docs/
+
+.distignore
+.gitignore

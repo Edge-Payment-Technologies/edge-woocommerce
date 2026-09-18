@@ -1,3 +1,69 @@
 [tools]
 node = "26.1.0"
 php = "8.5.9"
+
+[tasks."lint:php"]
+description = "Check PHP against the WooCommerce/WordPress standards"
+run = "vendor/bin/phpcs edge-gateway-for-woocommerce.php includes"
+
+[tasks."lint:js"]
+description = "Check JavaScript with wp-scripts"
+run = "npm run lint:js"
+
+[tasks."lint:report"]
+description = "Summarise PHP violations by sniff; '[ ]' rows are the ones that matter"
+run = "vendor/bin/phpcs --report=source edge-gateway-for-woocommerce.php includes"
+
+[tasks."lint:phpstan"]
+description = "Static analysis with PHPStan (WordPress + WooCommerce stubs)"
+run = "vendor/bin/phpstan analyse --no-progress --memory-limit=1G"
+
+[tasks."lint:phpstan:all"]
+description = "PHPStan including the baselined findings (what is still owed)"
+run = '''
+#!/usr/bin/env bash
+# PHPStan has no --ignore-baseline flag, so run against a copy of the config with
+# the baseline include stripped. It has to live in the project root because neon
+# resolves relative paths against the config file's own directory.
+cfg=".phpstan-nobaseline.neon"
+trap "rm -f $cfg" EXIT
+grep -v 'phpstan-baseline.neon' phpstan.neon > "$cfg"
+vendor/bin/phpstan analyse -c "$cfg" --no-progress --memory-limit=1G
+'''
+
+[tasks."check:plugin"]
+description = "Run WordPress Plugin Check (the wp.org review checks) against a local site"
+run = '''
+#!/usr/bin/env bash
+if [[ -z "${EDGE_STUDIO_SITE:-}" ]]; then
+  echo "EDGE_STUDIO_SITE is not set. Point it at your local WordPress site, e.g." >&2
+  echo "  export EDGE_STUDIO_SITE=\"$HOME/Studio/wp-edge\"" >&2
+  echo "or set it under [env] in mise.local.toml, which is gitignored." >&2
+  exit 1
+fi
+studio wp --path "$EDGE_STUDIO_SITE" plugin check edge-woocommerce \
+  --slug=edge-gateway-for-woocommerce \
+  --exclude-directories=deploy,node_modules,resources,tests,.github
+'''
+
+[tasks.lint]
+alias = "check"
+description = "Run every linter and report all violations"
+run = '''
+#!/usr/bin/env bash
+status=0
+
+echo "==> PHP"
+vendor/bin/phpcs edge-gateway-for-woocommerce.php includes || status=1
+
+echo "==> PHPStan"
+vendor/bin/phpstan analyse --no-progress --memory-limit=1G || status=1
+
+echo "==> JavaScript"
+npm run --silent lint:js || status=1
+
+echo "==> composer.json"
+composer validate --strict --no-check-lock || status=1
+
+exit $status
+'''

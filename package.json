@@ -1,26 +1,38 @@
 {
-	"name": "woocommerce-edge-gateway",
-	"title": "WooCommerce Edge Payments Gateway",
-	"version": "1.0.7",
-	"author": "WooCommerce",
-	"license": "GPL-3.0+",
-	"keywords": [],
+	"name": "edge-gateway-for-woocommerce",
+	"title": "Edge Gateway for WooCommerce",
+	"version": "1.0.25",
+	"author": "Kurtis Rainbolt-Greene <kurtis@tryedge.io>",
+	"license": "GPL-3.0-or-later",
+	"keywords": [
+		"woocommerce",
+		"edge-payment-technologies"
+	],
+	"respository": "https://github.com/Edge-Payment-Technologies/edge-woocommerce",
 	"engines": {
 		"node": ">=6.9.4",
 		"npm": ">=1.1.0"
 	},
 	"files": [
-		"woocommerce-edge-gateway.php",
+		"composer.json",
+		"edge-gateway-for-woocommerce.php",
 		"includes/",
 		"vendor/",
-		"assets/"
+		"assets/",
+		"!vendor/edge-payment-technologies/edge-php-sdk/mise.toml",
+		"!vendor/edge-payment-technologies/edge-php-sdk/.github",
+		"!vendor/edge-payment-technologies/edge-php-sdk/.gitignore",
+		"!vendor/edge-payment-technologies/edge-php-sdk/mise.toml",
+		"!vendor/league/iso3166/.yamllint",
+		"!vendor/psr/http-message/docs/"
 	],
 	"dependencies": {
 		"@wordpress/element": "^8.5.0",
+		"@wordpress/html-entities": "^4.54.0",
 		"@wordpress/i18n": "^6.26.0"
 	},
 	"devDependencies": {
-		"@woocommerce/dependency-extraction-webpack-plugin": "^2.2.0",
+		"@woocommerce/dependency-extraction-webpack-plugin": "^5.1.0",
 		"@wordpress/scripts": "^34.1.0",
 		"cross-env": "^10.1.0"
 	},
@@ -31,7 +43,7 @@
 		"check-licenses": "wp-scripts check-licenses",
 		"format": "wp-scripts format",
 		"lint:css": "wp-scripts lint-style",
-		"lint:js": "wp-scripts lint-js",
+		"lint:js": "wp-scripts lint-js resources",
 		"lint:md:docs": "wp-scripts lint-md-docs",
 		"lint:pkg-json": "wp-scripts lint-pkg-json",
 		"packages-update": "wp-scripts packages-update",
@@ -40,7 +52,7 @@
 		"test:unit": "wp-scripts test-unit-js",
 		"i18n": "npm run i18n:build",
 		"i18n:build": "npm run i18n:pot && ./bin/build_i18n.sh",
-		"i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE <EMAIL@ADDRESS>\"}' . languages/edge-gateway.pot",
+		"i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE engineering@tryedge.io\"}' . languages/edge-gateway-for-woocommerce.pot",
 		"i18n:json": "$(which wp) i18n make-json languages --no-purge"
 	}
 }
