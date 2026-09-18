@@ -12,7 +12,7 @@
 		"edge-payment-technologies/edge-php-sdk": "^2.0"
 	},
 	"require-dev": {
-		"woocommerce/woocommerce-sniffs": "^1.0",
+		"woocommerce/woocommerce-sniffs": "^2.0",
 		"phpstan/phpstan": "^2.2",
 		"szepeviktor/phpstan-wordpress": "^2.0",
 		"php-stubs/woocommerce-stubs": "^11.1"
