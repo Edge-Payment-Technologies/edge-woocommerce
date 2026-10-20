@@ -29,7 +29,7 @@
 	"dependencies": {
 		"@wordpress/element": "^8.5.0",
 		"@wordpress/html-entities": "^4.54.0",
-		"@wordpress/i18n": "^6.26.0"
+		"@wordpress/i18n": "^7.0.0"
 	},
 	"devDependencies": {
 		"@woocommerce/dependency-extraction-webpack-plugin": "^5.1.0",
