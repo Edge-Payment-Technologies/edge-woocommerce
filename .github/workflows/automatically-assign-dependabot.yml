@@ -14,7 +14,7 @@ jobs:
             pull-requests: write
         steps:
             - name: Auto-assign Issue
-              uses: pozil/auto-assign-issue@v4.0.1
+              uses: pozil/auto-assign-issue@v4.1.0
               with:
                   repo-token: ${{ secrets.GITHUB_TOKEN }}
                   assignees: krainboltgreene,ziyan-junaideen
